@@ -43,6 +43,8 @@ Read this first before doing anything in this project.
 ## Decisions made (Sept 2026 chat)
 - Vision: the agent is its own "market brain" (rules + self-trained ML model like LightGBM, retrained over time), not an LLM. LLM only for news/journal.
 - His trading style is MULTI-TIMEFRAME (top-down): Weekly, Daily, 4H, 1H for bias/structure, execute on 15m or 5m. Agent must work the same way. Plan: download M5 data, resample to all higher TFs ourselves; always use only CLOSED higher-TF candles (no lookahead).
+- Trade in all 3 sessions: Asian (Tokyo), London, New York. Sessions defined in local time with DST via tz names (Asia/Tokyo, Europe/London, America/New_York), never fixed UTC hours. Session is a feature for the ML model; behaviour differs per session.
+- All data stored in UTC. Daily/weekly candles close at NY 5 PM (convert to America/New_York, handles DST automatically).
 - First model: XAUUSD, standard trend-following pullback strategy (originally planned on 1H; now to be adapted to multi-timeframe) (EMA 50/200 trend, pullback to EMA 20/50, ATR stop, 1:2 RR / trailing). His own manual strategies come later.
 - Zero cost at start: Groq free API instead of Claude Haiku for news; laptop instead of VPS (Azure free Windows VM later for 24x5 paper trading). Pay only if it works.
 - Jev (TypeSafe AI classifier, launched Sept 2026): not for trade decisions; maybe test later for the news layer.
@@ -52,7 +54,8 @@ Read this first before doing anything in this project.
 - Step 1 done: venv (.venv), installed pandas, numpy, pyarrow, backtesting, ta, matplotlib, jupyter; requirements.txt; folders data/raw, data/processed, notebooks, src/{data,strategies,risk,backtest}, reports; .gitignore; git init + first commit.
 - Step 2 done: src/data/download_dukascopy.py (dukascopy-python, UTC-aware dates, BID+ASK, per-year Parquet files, resume/skip). XAUUSD H1 2016-2026 downloaded to data/raw (22 files).
 - Folder renamed forex-agent -> C:\Users\Prxj\ai-forex-trader; venv recreated from requirements.txt.
-- Next: push to private GitHub repo `ai-forex-trader`, then download M5 data and resample to 15m/1H/4H/D/W (daily close at NY 5 PM).
+- Pushed to private GitHub repo https://github.com/Prxj3101/ai-forex-trader (branch main). Claude must NOT run git commands on his repo from the sandbox (left a stale .git/index.lock once).
+- Next: download M5 data and resample to 15m/1H/4H/D/W (daily close at NY 5 PM).
 
 ## Other idea (separate, for later)
 - He also wants to discuss an AI-based mental health business idea. Not started.
