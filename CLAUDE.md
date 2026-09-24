@@ -1,0 +1,44 @@
+# Forex AI Trading Agent - Project Notes
+
+Handoff notes from an earlier chat (inside the QubeEx project) where this idea was discussed.
+Read this first before doing anything in this project.
+
+## About the user
+- Name: Prajwal. Talks in casual Hinglish (Hindi + English). Reply the same way.
+- Computer Engineering graduate (University of Mumbai). Knows Python, JavaScript, TypeScript, React, React Native/Expo, PostgreSQL, REST APIs.
+- Built QubeEx (a full-stack AI assessment platform) - that is a separate project, not related to this one.
+- Working style: one step at a time. Do not start building or writing code until he clearly says go ahead. If he says "ruk" (wait), stop and wait.
+- He wants to LEARN while building. For every step, command, tool or piece of code: explain what it is, why we need it, and what it does, in simple Hinglish. Assume he does not know terms like venv, pip, etc. unless he says so.
+
+## Goal
+- Build an AI trading agent that trades forex on its own: decides when to enter, when to exit, and how much to risk.
+- Pairs: XAUUSD (gold), EURUSD, GBPUSD, USDJPY, USDCAD, AUDUSD.
+- Long-term idea: give it a small real account (about 100 USD) and grow it.
+- Agreed approach: backtesting first, then paper trading on a demo account for 2-3 months. Real money only if results are consistently positive after fees, and only an amount he can afford to lose.
+
+## Things already agreed / said honestly
+- Building the system is fully doable. Profitability is NOT guaranteed and nobody can promise it. He said he is comfortable with that and wants to at least build the system.
+- The agent is a system of parts, not one magic AI. An LLM should not make the live entry decisions (too slow, not reliable on price). Use it for news/sentiment summaries and trade journaling.
+- Legal note (India): trading these non-INR pairs with real money through an offshore broker (Exness, OANDA, MT5 brokers etc.) goes against FEMA; RBI keeps an Alert List of unauthorised forex platforms. Backtesting and demo/paper trading are fine since no money is sent abroad. Real-money decision comes later and is his call.
+
+## Planned architecture
+1. Data: historical candles for backtesting; live prices from a demo account; economic calendar (NFP, FOMC, CPI).
+2. Market context: trend vs range, volatility (ATR), session (London / New York / Asia), no trading right before big news.
+3. Strategy: rule-based base (trend-following / breakout / mean reversion) + later an ML model as a filter (probability the setup works), not raw price prediction. Exits: stop-loss, take-profit, trailing stop, time-based exit.
+4. Risk manager (most important): 0.5-1% risk per trade, ATR-based stops, max daily/weekly loss (bot stops itself), correlation control (all pairs contain USD, so 5 open trades = one big USD bet), separate sizing for XAUUSD (much more volatile).
+5. LLM role: news/sentiment summary, trade journal (why entered, why exited, what went wrong).
+6. Testing: include spread, slippage, swap in backtests; walk-forward testing to avoid overfitting; judge on profit factor, max drawdown, number of trades (not just win rate).
+7. Later: dashboard to see trades and performance; runs on his PC or a VPS.
+
+## Phase plan
+1. Data + backtesting setup (Python; backtesting.py or vectorbt).
+2. One simple strategy first (e.g. trend-following on EURUSD) with the risk manager.
+3. Test and improve, then add other pairs and the ML filter.
+4. Paper trade live on a demo account for 2-3 months.
+
+## Open decisions (not answered yet)
+- Platform for demo trading + live data: MetaTrader 5 demo (recommended - free, Windows, Python `MetaTrader5` package, has gold and all pairs) vs OANDA practice API.
+- (Resolved) Laptop has Python 3.14.3, pip 25.3, Git 2.53. Checked: MetaTrader5, numba, LightGBM, vectorbt, backtesting.py, TA-Lib all support 3.14.
+
+## Other idea (separate, for later)
+- He also wants to discuss an AI-based mental health business idea. Not started.
