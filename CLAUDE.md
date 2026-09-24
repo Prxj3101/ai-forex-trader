@@ -40,5 +40,16 @@ Read this first before doing anything in this project.
 - Platform for demo trading + live data: MetaTrader 5 demo (recommended - free, Windows, Python `MetaTrader5` package, has gold and all pairs) vs OANDA practice API.
 - (Resolved) Laptop has Python 3.14.3, pip 25.3, Git 2.53. Checked: MetaTrader5, numba, LightGBM, vectorbt, backtesting.py, TA-Lib all support 3.14.
 
+## Decisions made (Sept 2026 chat)
+- Vision: the agent is its own "market brain" (rules + self-trained ML model like LightGBM, retrained over time), not an LLM. LLM only for news/journal.
+- First model: XAUUSD, 1H, standard trend-following pullback strategy (EMA 50/200 trend, pullback to EMA 20/50, ATR stop, 1:2 RR / trailing). His own manual strategies come later.
+- Zero cost at start: Groq free API instead of Claude Haiku for news; laptop instead of VPS (Azure free Windows VM later for 24x5 paper trading). Pay only if it works.
+- Jev (TypeSafe AI classifier, launched Sept 2026): not for trade decisions; maybe test later for the news layer.
+- He uses Antigravity (VS Code based) with CMD terminal: activate venv with `.venv\Scripts\activate.bat`.
+
+## Progress
+- Step 1 done: venv (.venv), installed pandas, numpy, pyarrow, backtesting, ta, matplotlib, jupyter; requirements.txt; folders data/raw, data/processed, notebooks, src/{data,strategies,risk,backtest}, reports; .gitignore; git init + first commit.
+- Next: download XAUUSD historical data (Dukascopy).
+
 ## Other idea (separate, for later)
 - He also wants to discuss an AI-based mental health business idea. Not started.

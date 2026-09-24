@@ -19,6 +19,7 @@ contourpy==1.4.0
 cycler==0.12.1
 debugpy==1.8.22
 defusedxml==0.7.1
+dukascopy-python==4.0.1
 executing==2.2.1
 fastjsonschema==2.22.2
 fonttools==4.66.0
