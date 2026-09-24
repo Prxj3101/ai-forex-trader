@@ -42,14 +42,17 @@ Read this first before doing anything in this project.
 
 ## Decisions made (Sept 2026 chat)
 - Vision: the agent is its own "market brain" (rules + self-trained ML model like LightGBM, retrained over time), not an LLM. LLM only for news/journal.
-- First model: XAUUSD, 1H, standard trend-following pullback strategy (EMA 50/200 trend, pullback to EMA 20/50, ATR stop, 1:2 RR / trailing). His own manual strategies come later.
+- His trading style is MULTI-TIMEFRAME (top-down): Weekly, Daily, 4H, 1H for bias/structure, execute on 15m or 5m. Agent must work the same way. Plan: download M5 data, resample to all higher TFs ourselves; always use only CLOSED higher-TF candles (no lookahead).
+- First model: XAUUSD, standard trend-following pullback strategy (originally planned on 1H; now to be adapted to multi-timeframe) (EMA 50/200 trend, pullback to EMA 20/50, ATR stop, 1:2 RR / trailing). His own manual strategies come later.
 - Zero cost at start: Groq free API instead of Claude Haiku for news; laptop instead of VPS (Azure free Windows VM later for 24x5 paper trading). Pay only if it works.
 - Jev (TypeSafe AI classifier, launched Sept 2026): not for trade decisions; maybe test later for the news layer.
 - He uses Antigravity (VS Code based) with CMD terminal: activate venv with `.venv\Scripts\activate.bat`.
 
 ## Progress
 - Step 1 done: venv (.venv), installed pandas, numpy, pyarrow, backtesting, ta, matplotlib, jupyter; requirements.txt; folders data/raw, data/processed, notebooks, src/{data,strategies,risk,backtest}, reports; .gitignore; git init + first commit.
-- Next: download XAUUSD historical data (Dukascopy).
+- Step 2 done: src/data/download_dukascopy.py (dukascopy-python, UTC-aware dates, BID+ASK, per-year Parquet files, resume/skip). XAUUSD H1 2016-2026 downloaded to data/raw (22 files).
+- Folder renamed forex-agent -> C:\Users\Prxj\ai-forex-trader; venv recreated from requirements.txt.
+- Next: push to private GitHub repo `ai-forex-trader`, then download M5 data and resample to 15m/1H/4H/D/W (daily close at NY 5 PM).
 
 ## Other idea (separate, for later)
 - He also wants to discuss an AI-based mental health business idea. Not started.
