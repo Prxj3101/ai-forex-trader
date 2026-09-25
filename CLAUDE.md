@@ -55,7 +55,9 @@ Read this first before doing anything in this project.
 - Step 2 done: src/data/download_dukascopy.py (dukascopy-python, UTC-aware dates, BID+ASK, per-year Parquet files, resume/skip). XAUUSD H1 2016-2026 downloaded to data/raw (22 files).
 - Folder renamed forex-agent -> C:\Users\Prxj\ai-forex-trader; venv recreated from requirements.txt.
 - Pushed to private GitHub repo https://github.com/Prxj3101/ai-forex-trader (branch main). Claude must NOT run git commands on his repo from the sandbox (left a stale .git/index.lock once).
-- Next: download M5 data and resample to 15m/1H/4H/D/W (daily close at NY 5 PM).
+- Step 3 done: download script takes --tf (M1/M5/M15/H1). XAUUSD M5 2016 -> 2026-09-25 downloaded.
+- Step 4 done: src/data/build_timeframes.py -> data/processed/XAUUSD_{M5,M15,H1,H4,D1,W1}.parquet. Columns: open, high, low, close (BID), volume, spread (ask-bid close), close_time (UTC, for no-lookahead), m5_count. Index `time` = candle open (UTC). 760,923 M5 candles; only 3 flat candles, 0 bad prices; 74 non-weekend gaps of ~5h = US holidays (CME early close), expected, not missing data.
+- Next: commit + push; then look at data in a Jupyter notebook (charts, spread by session, compare with TradingView/MT5), then first strategy.
 
 ## Other idea (separate, for later)
 - He also wants to discuss an AI-based mental health business idea. Not started.
