@@ -57,7 +57,9 @@ Read this first before doing anything in this project.
 - Pushed to private GitHub repo https://github.com/Prxj3101/ai-forex-trader (branch main). Claude must NOT run git commands on his repo from the sandbox (left a stale .git/index.lock once).
 - Step 3 done: download script takes --tf (M1/M5/M15/H1). XAUUSD M5 2016 -> 2026-09-25 downloaded.
 - Step 4 done: src/data/build_timeframes.py -> data/processed/XAUUSD_{M5,M15,H1,H4,D1,W1}.parquet. Columns: open, high, low, close (BID), volume, spread (ask-bid close), close_time (UTC, for no-lookahead), m5_count. Index `time` = candle open (UTC). 760,923 M5 candles; only 3 flat candles, 0 bad prices; 74 non-weekend gaps of ~5h = US holidays (CME early close), expected, not missing data.
-- Next: commit + push; then look at data in a Jupyter notebook (charts, spread by session, compare with TradingView/MT5), then first strategy.
+- Step 5: notebooks/01_explore_data.ipynb (he runs it via `jupyter lab`). Findings (last 2 yrs, M5): avg spread ~$0.6; spread/range: London+NY overlap best 10.4%, London 15.6%, Asian 16.1%, NY-only 17.2%, Off-hours worst 21.5%. Most volatile IST hours 18-20 (overlap + US data), then 6-7 IST (Asian open); quietest 2 AM and 9-10 AM IST. D1 candles = 276 M5 (23h, 1h daily break). Gold went $1,074 (2016) -> ~$4,300 (Sept 2026).
+- D1/W1 now have `trade_date` column (TradingView/MT5 date; D1 `time` is previous evening 6 PM NY). Verified vs TradingView OANDA:XAUUSD 22 Sep 2026: H/L within $0.5, close within $2, open ~$5 (broker first-tick difference). Data verified OK.
+- Next: features/indicators on all timeframes (EMA, ATR, RSI, sessions) with no lookahead, then first strategy.
 
 ## Other idea (separate, for later)
 - He also wants to discuss an AI-based mental health business idea. Not started.

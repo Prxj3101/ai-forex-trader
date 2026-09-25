@@ -15,6 +15,8 @@ Output ki har candle mein do time hote hain (dono UTC):
   time        -> candle kab KHULI
   close_time  -> candle kab BAND hui. Higher timeframe ki candle tabhi use kar sakte hain
                  jab uska close_time aa chuka ho (lookahead se bachne ke liye).
+  trade_date  -> (sirf D1/W1) TradingView/MT5 wali date. D1 ki candle pichli shaam khulti hai,
+                 isliye `time` ek din pehle ka hota hai; trade_date asli trading din batata hai.
 """
 
 from pathlib import Path
@@ -144,6 +146,13 @@ def resample(m5: pd.DataFrame, rule: str) -> pd.DataFrame:
         m5_count=("open", "size"),       # kitni M5 candles se bani (quality check)
     )
     out["close_time"] = out["last_m5"] + pd.Timedelta(minutes=BASE_MINUTES)
+
+    # D1/W1 ke liye trading date (TradingView/MT5 wali). Candle pichli shaam 6 PM NY pe
+    # khulti hai, isliye `time` ek din pehle ka dikhta hai. Bucket (trading clock) ki date
+    # hi asli trading date hai. W1 ke liye ye hafte ka Monday hai.
+    if rule in ("D", "W"):
+        out["trade_date"] = out.index.normalize()
+
     out = out.drop(columns="last_m5").set_index("time")
     return out
 
