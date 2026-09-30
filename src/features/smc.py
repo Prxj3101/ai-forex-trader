@@ -165,6 +165,41 @@ def _zone_row(direction, ob, i, swing_idx, disp, o, h, l, c, a, times, close_tim
 
 
 # ----------------------------------------------------------------------
+# Structure breaks (HTF bias ke liye)
+# ----------------------------------------------------------------------
+def structure_breaks(df: pd.DataFrame, swing_n: int = 2) -> pd.DataFrame:
+    """
+    Har BOS (break of structure) ki list, displacement filter ke BINA.
+    Bullish BOS = close pichle confirmed swing high ke upar, bearish ulta.
+    H4 / D1 pe iska aakhri break = "bada trend kis taraf hai" (HTF bias).
+
+    Returns: columns [time (BOS candle band hone ka time), direction]
+    """
+    h, l, c = df["high"].to_numpy(), df["low"].to_numpy(), df["close"].to_numpy()
+    close_times = df["close_time"].to_numpy() if "close_time" in df else df.index.to_numpy()
+    is_sh, is_sl = find_swings(df, swing_n)
+    last_sh = last_sl = -1
+    sh_broken = sl_broken = True
+    rows = []
+    for i in range(len(df)):
+        k = i - swing_n
+        if k >= 0:
+            if is_sh[k]:
+                last_sh, sh_broken = k, False
+            if is_sl[k]:
+                last_sl, sl_broken = k, False
+        if not sh_broken and last_sh >= 0 and c[i] > h[last_sh]:
+            sh_broken = True
+            rows.append((close_times[i], "bull"))
+        if not sl_broken and last_sl >= 0 and c[i] < l[last_sl]:
+            sl_broken = True
+            rows.append((close_times[i], "bear"))
+    out = pd.DataFrame(rows, columns=["time", "direction"])
+    out["time"] = pd.to_datetime(out["time"], utc=True)
+    return out
+
+
+# ----------------------------------------------------------------------
 # Zone ke baad kya hua
 # ----------------------------------------------------------------------
 def track_zones(zones: pd.DataFrame, df: pd.DataFrame, use_body: bool = False, max_bars: int = 500) -> pd.DataFrame:
