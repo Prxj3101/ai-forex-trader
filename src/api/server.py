@@ -201,6 +201,55 @@ def scan(symbol: str = "USDJPY", tf: str = "M15", swing_n: int = 1, min_disp: fl
 
 
 # ----------------------------------------------------------------------
+# Research: zone dataset (Setup #1 ka 10 saal ka result) + filters
+# ----------------------------------------------------------------------
+from src.research import analysis, zone_dataset  # noqa: E402
+
+research_lock = threading.Lock()
+
+
+def run_research(symbol: str, tf: str, swing_n: int, min_disp: float) -> None:
+    try:
+        bus.emit("data", f"Building research dataset: {symbol} {tf}", progress=5)
+
+        def log(agent: str, msg: str, pct=None):
+            bus.emit(agent, msg, status="done" if pct == 100 else "active", progress=pct)
+
+        ds = zone_dataset.build(symbol, tf, swing_n, min_disp, log=log)
+        zone_dataset.save(ds, symbol, tf)
+        s = analysis.stats(ds)
+        bus.emit("system", f"Research ready: {s['trades']:,} trades, win {s['win_pct']}%, PF {s['pf']}",
+                 status="done", kind="research", data={"symbol": symbol, "tf": tf, **s})
+    except Exception as e:
+        bus.emit("system", f"Research failed: {e}", status="error")
+    finally:
+        research_lock.release()
+
+
+@app.post("/api/research/build")
+def research_build(symbol: str = "USDJPY", tf: str = "M15", swing_n: int = 1, min_disp: float = 2.0):
+    for t in (tf, "M5", "H1", "H4"):
+        load(symbol, t)   # saari files hain ya nahi, pehle check
+    if not research_lock.acquire(blocking=False):
+        raise HTTPException(409, "A research build is already running")
+    threading.Thread(target=run_research, args=(symbol, tf, swing_n, min_disp), daemon=True).start()
+    return {"started": True}
+
+
+@app.get("/api/research/report")
+def research_report(symbol: str = "USDJPY", tf: str = "M15", min_disp_h1: float = 0, sessions: str = "",
+                    fvg_only: bool = False, confluence_only: bool = False, direction: str = "both"):
+    rep = analysis.report(
+        symbol, tf, min_disp_h1=min_disp_h1,
+        sessions=[s for s in sessions.split(",") if s], fvg_only=fvg_only,
+        confluence_only=confluence_only, direction=direction,
+    )
+    if rep is None:
+        raise HTTPException(404, f"No research dataset for {symbol} {tf}. Build it first.")
+    return rep
+
+
+# ----------------------------------------------------------------------
 # WebSocket: live events
 # ----------------------------------------------------------------------
 @app.websocket("/ws")
