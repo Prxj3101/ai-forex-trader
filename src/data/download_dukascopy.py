@@ -2,8 +2,10 @@ r"""
 Dukascopy se historical candles download karke data/raw mein save karta hai.
 
 Chalane ka tareeka (ai-forex-trader folder se, venv active karke):
-    python src\data\download_dukascopy.py            -> default M5
-    python src\data\download_dukascopy.py --tf H1    -> 1 ghante ki candles
+    python src\data\download_dukascopy.py                          -> XAUUSD, M5
+    python src\data\download_dukascopy.py --symbol USDJPY          -> USDJPY, M5
+    python src\data\download_dukascopy.py --symbol EURUSD GBPUSD   -> ek saath kai pairs
+    python src\data\download_dukascopy.py --tf H1                  -> 1 ghante ki candles
 
 Har saal ka data alag file mein save hota hai. Beech mein band ho gaya toh
 dobara chalao - jo saal already download ho chuke hain wo skip ho jayenge.
@@ -15,14 +17,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import dukascopy_python as dk
-from dukascopy_python.instruments import INSTRUMENT_FX_METALS_XAU_USD
+import dukascopy_python.instruments as ins
 
 # ----------------------------------------------------------------------
-# Settings - naya pair chahiye toh sirf yahan badlo
+# Settings
 # ----------------------------------------------------------------------
-SYMBOL = "XAUUSD"
-INSTRUMENT = INSTRUMENT_FX_METALS_XAU_USD
 START_YEAR = 2016
+
+# Humara naam -> Dukascopy ka instrument
+SYMBOLS = {
+    "XAUUSD": ins.INSTRUMENT_FX_METALS_XAU_USD,
+    "EURUSD": ins.INSTRUMENT_FX_MAJORS_EUR_USD,
+    "GBPUSD": ins.INSTRUMENT_FX_MAJORS_GBP_USD,
+    "USDJPY": ins.INSTRUMENT_FX_MAJORS_USD_JPY,
+    "USDCAD": ins.INSTRUMENT_FX_MAJORS_USD_CAD,
+    "AUDUSD": ins.INSTRUMENT_FX_MAJORS_AUD_USD,
+}
 
 # Humara naam (file ke liye) -> Dukascopy ka naam (download ke liye)
 TIMEFRAMES = {
@@ -43,10 +53,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
 
 
-def download_year(year: int, timeframe: str, side_name: str, side: str) -> None:
-    """Ek saal + ek timeframe + ek side (BID/ASK) ka data download karke Parquet mein save karta hai."""
+def download_year(symbol: str, year: int, timeframe: str, side_name: str, side: str) -> None:
+    """Ek pair + ek saal + ek timeframe + ek side (BID/ASK) download karke Parquet mein save karta hai."""
     now = datetime.now(timezone.utc)
-    out_file = RAW_DIR / f"{SYMBOL}_{timeframe}_{side_name}_{year}.parquet"
+    out_file = RAW_DIR / f"{symbol}_{timeframe}_{side_name}_{year}.parquet"
 
     # Purane saal ki file already hai toh dobara download mat karo.
     # Current saal ko hamesha dobara download karte hain kyunki usme naya data aata rehta hai.
@@ -59,8 +69,8 @@ def download_year(year: int, timeframe: str, side_name: str, side: str) -> None:
     start = datetime(year, 1, 1, tzinfo=timezone.utc)
     end = min(datetime(year + 1, 1, 1, tzinfo=timezone.utc), now)
 
-    print(f"  Downloading {SYMBOL} {timeframe} {side_name} {year} ...", flush=True)
-    df = dk.fetch(INSTRUMENT, TIMEFRAMES[timeframe], side, start, end, max_retries=5)
+    print(f"  Downloading {symbol} {timeframe} {side_name} {year} ...", flush=True)
+    df = dk.fetch(SYMBOLS[symbol], TIMEFRAMES[timeframe], side, start, end, max_retries=5)
 
     if df.empty:
         print(f"  {year} ka koi data nahi mila")
@@ -71,8 +81,10 @@ def download_year(year: int, timeframe: str, side_name: str, side: str) -> None:
 
 
 def main() -> None:
-    # Command line se timeframe lena: --tf M5 / --tf H1 etc.
+    # Command line arguments: --symbol USDJPY, --tf M5 etc.
     parser = argparse.ArgumentParser(description="Dukascopy se candles download karo")
+    parser.add_argument("--symbol", nargs="+", default=["XAUUSD"], choices=SYMBOLS.keys(),
+                        help="Ek ya zyada pairs (default: XAUUSD)")
     parser.add_argument("--tf", default="M5", choices=TIMEFRAMES.keys(),
                         help="Timeframe (default: M5)")
     args = parser.parse_args()
@@ -80,11 +92,13 @@ def main() -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     current_year = datetime.now(timezone.utc).year
 
-    for year in range(START_YEAR, current_year + 1):
-        print(f"\n=== {year} ===")
-        for side_name, side in SIDES.items():
-            download_year(year, args.tf, side_name, side)
-            time.sleep(1)  # Dukascopy server pe load na pade isliye thoda rukna
+    for symbol in args.symbol:
+        print(f"\n########## {symbol} ##########")
+        for year in range(START_YEAR, current_year + 1):
+            print(f"\n=== {symbol} {year} ===")
+            for side_name, side in SIDES.items():
+                download_year(symbol, year, args.tf, side_name, side)
+                time.sleep(1)  # Dukascopy server pe load na pade isliye thoda rukna
 
     print("\nDone! Files yahan hain:", RAW_DIR)
 

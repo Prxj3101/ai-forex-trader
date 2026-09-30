@@ -2,7 +2,8 @@ r"""
 Raw M5 data (data/raw) se saare timeframes banata hai aur data/processed mein save karta hai.
 
 Chalane ka tareeka (ai-forex-trader folder se, venv active karke):
-    python src\data\build_timeframes.py
+    python src\data\build_timeframes.py                    -> XAUUSD
+    python src\data\build_timeframes.py --symbol USDJPY    -> USDJPY
 
 Steps:
   1. Saare saal ki BID aur ASK files jodna
@@ -19,6 +20,7 @@ Output ki har candle mein do time hote hain (dono UTC):
                  isliye `time` ek din pehle ka hota hai; trade_date asli trading din batata hai.
 """
 
+import argparse
 from pathlib import Path
 
 import pandas as pd
@@ -26,7 +28,6 @@ import pandas as pd
 # ----------------------------------------------------------------------
 # Settings
 # ----------------------------------------------------------------------
-SYMBOL = "XAUUSD"
 BASE_TF = "M5"
 BASE_MINUTES = 5
 
@@ -53,11 +54,11 @@ TARGET_TFS = {
 # ----------------------------------------------------------------------
 # 1. Load
 # ----------------------------------------------------------------------
-def load_side(side: str) -> pd.DataFrame:
-    """Ek side (BID ya ASK) ki saari saal wali files padh ke ek table banata hai."""
-    files = sorted(RAW_DIR.glob(f"{SYMBOL}_{BASE_TF}_{side}_*.parquet"))
+def load_side(symbol: str, side: str) -> pd.DataFrame:
+    """Ek pair ki ek side (BID ya ASK) ki saari saal wali files padh ke ek table banata hai."""
+    files = sorted(RAW_DIR.glob(f"{symbol}_{BASE_TF}_{side}_*.parquet"))
     if not files:
-        raise FileNotFoundError(f"{RAW_DIR} mein {SYMBOL}_{BASE_TF}_{side}_*.parquet nahi mili")
+        raise FileNotFoundError(f"{RAW_DIR} mein {symbol}_{BASE_TF}_{side}_*.parquet nahi mili")
 
     print(f"  {side}: {len(files)} files")
     df = pd.concat([pd.read_parquet(f) for f in files])
@@ -160,12 +161,12 @@ def resample(m5: pd.DataFrame, rule: str) -> pd.DataFrame:
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
-def main() -> None:
-    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-
+def build(symbol: str) -> None:
+    """Ek pair ke saare timeframes banata hai."""
+    print(f"\n########## {symbol} ##########")
     print("\n[1] Loading raw data")
-    bid = load_side("BID")
-    ask = load_side("ASK")
+    bid = load_side(symbol, "BID")
+    ask = load_side(symbol, "ASK")
 
     print("\n[2] Cleaning")
     m5 = clean(bid, ask)
@@ -174,18 +175,29 @@ def main() -> None:
     m5["m5_count"] = 1
 
     print("\n[3] Saving timeframes")
-    out_file = PROCESSED_DIR / f"{SYMBOL}_{BASE_TF}.parquet"
+    out_file = PROCESSED_DIR / f"{symbol}_{BASE_TF}.parquet"
     m5.to_parquet(out_file)
     print(f"  {BASE_TF:>3}: {len(m5):>9,} candles -> {out_file.name}")
 
     for name, rule in TARGET_TFS.items():
         df = resample(m5, rule)
-        out_file = PROCESSED_DIR / f"{SYMBOL}_{name}.parquet"
+        out_file = PROCESSED_DIR / f"{symbol}_{name}.parquet"
         df.to_parquet(out_file)
         print(f"  {name:>3}: {len(df):>9,} candles -> {out_file.name}")
 
     print(f"\nData range: {m5.index[0]}  ->  {m5.index[-1]}")
-    print("Done!")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Raw M5 se saare timeframes banao")
+    parser.add_argument("--symbol", nargs="+", default=["XAUUSD"],
+                        help="Ek ya zyada pairs (default: XAUUSD)")
+    args = parser.parse_args()
+
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    for symbol in args.symbol:
+        build(symbol)
+    print("\nDone!")
 
 
 if __name__ == "__main__":
