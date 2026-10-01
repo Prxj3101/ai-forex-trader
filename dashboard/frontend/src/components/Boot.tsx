@@ -43,7 +43,16 @@ export default function Boot() {
       }
       await say('> STRUCTURE ENGINE .....................OK', 75)
       await say('> ORDERFLOW ZONE SCANNER ...............OK', 85)
-      await say('> ML BRAIN ....................NOT TRAINED', 92)
+      let trained = false
+      if (online) {
+        try {
+          await api.mlReport()
+          trained = true
+        } catch {
+          trained = false
+        }
+      }
+      await say(trained ? '> ML BRAIN .........................TRAINED' : '> ML BRAIN ....................NOT TRAINED', 92)
       await say(online ? '> READY TO TRADE.' : '> RUNNING IN OFFLINE MODE.', 100)
       await wait(400)
       setVisible(false)

@@ -36,7 +36,7 @@ export type AgentEvent = {
   message: string
   status: 'active' | 'idle' | 'done' | 'error'
   progress: number | null
-  kind: 'log' | 'result' | 'research'
+  kind: 'log' | 'result' | 'research' | 'ml'
   data: Record<string, unknown>
 }
 
@@ -90,6 +90,149 @@ export type ResearchFilters = {
   direction: 'both' | 'bull' | 'bear'
 }
 
+export type MLSummaryRow = {
+  keep: number
+  trades: number
+  win_pct: number
+  pf_trail: number
+  pf_1to1: number
+  pf_1to2: number
+  total_r: number
+  avg_r: number
+  losing_years: number
+}
+
+export type MLReport = {
+  trained_at: string | null
+  symbols: string[]
+  n_trades: number
+  n_features: number
+  first_test_year: number
+  summary: MLSummaryRow[]
+  score_buckets: { bucket: string; trades: number; avg_score: number; real_win_pct: number; pf: number }[]
+  by_year: { keep: number; year: number; trades: number; pf: number; total_r: number }[]
+  by_symbol: { keep: number; symbol: string; trades: number; pf: number; total_r: number }[]
+  importance: { feature: string; pct: number }[]
+  exits: { exit: string; label: string; trades: number; pf: number; total_r: number; max_dd_r: number; losing_years: number }[]
+  bot: {
+    label: string
+    trades: number
+    win_pct: number
+    pf: number
+    total_r: number
+    avg_r: number
+    max_dd_r: number
+    losing_years: number
+    trail_share_pct: number
+    by_year: Record<string, number>
+    by_symbol: Record<string, { trades: number; pf: number; total_r: number }>
+  } | null
+  commission: number | null
+  slippage_pips: number | null
+  net: boolean
+}
+
+export type RiskReport = {
+  config: {
+    capital: number
+    risk_pct: number
+    commission_per_lot: number
+    max_open: number
+    daily_loss_pct: number
+    slippage_pips: number
+    brake_dd_pct?: number
+    brake_factor?: number
+    kill_dd_pct?: number
+  }
+  braked_trades_pct?: number
+  kill_switch_events?: { time: string; drawdown_pct: number }[]
+  start: string
+  end: string
+  years: number
+  trades: number
+  trades_per_month: number
+  start_equity: number
+  final_equity: number
+  total_return_pct: number
+  cagr_pct: number
+  max_drawdown_pct: number
+  win_pct: number
+  profit_factor: number
+  commission_usd: number
+  losing_months_pct: number
+  worst_month_pct: number
+  best_month_pct: number
+  longest_losing_streak: number
+  skipped: Record<string, number>
+  yearly_return_pct: Record<string, number>
+  by_symbol: Record<string, { trades: number; pnl: number }>
+  equity_curve: { time: number; value: number }[]
+}
+
+export type MLScore = {
+  fill_time: number
+  zone_candle_time: number
+  direction: 'bull' | 'bear'
+  touch_number: number
+  entry: number
+  sl: number
+  score: number
+  keep_top30: boolean
+  keep_top50: boolean
+  r_trail: number
+  exit: string
+  exit_ml: 'tp1' | 'trail' | null
+  r_ml: number | null
+}
+
+export type ResearchExit = 'tp1' | 'tp2' | 'trail' | 'brain'
+
+export type ResearchV2Filters = {
+  tf: 'M15' | 'H1' | 'ALL'
+  exit: ResearchExit
+  ml_only: boolean
+  first_touch: boolean
+  min_disp_h1: number
+  sessions: string[]
+  killzones: string[]
+  fvg_only: boolean
+  confluence_only: boolean
+  direction: 'both' | 'bull' | 'bear'
+}
+
+export type ResearchV2Report = {
+  symbol: string
+  tf: string
+  settings: {
+    swing_n: number | null
+    min_disp: number | null
+    exit: ResearchExit
+    exit_label: string
+    commission: number
+    slippage_pips: number
+    net: boolean
+    period: string
+    ml_period_only: boolean
+  }
+  break_even_win_pct: number | null
+  all: Stats
+  filtered: Stats
+  equity_all: { time: number; value: number }[]
+  equity_filtered: { time: number; value: number }[]
+  by_session: BreakdownRow[]
+  by_killzone: BreakdownRow[]
+  by_disp: BreakdownRow[]
+  by_year: BreakdownRow[]
+  by_direction: BreakdownRow[]
+}
+
+export type BotConfig = {
+  swing_n: number
+  core_symbols: string[]
+  disp_by_symbol: Record<string, number>
+  default_disp: number
+}
+
 type Params = Record<string, string | number | undefined>
 
 function buildUrl(path: string, params: Params): URL {
@@ -125,6 +268,26 @@ export const api = {
       symbol, tf,
       min_disp_h1: f.min_disp_h1,
       sessions: f.sessions.join(','),
+      fvg_only: String(f.fvg_only),
+      confluence_only: String(f.confluence_only),
+      direction: f.direction,
+    }),
+  mlTrain: (symbols: string[]) => request<{ started: boolean }>('/api/ml/train', { symbols: symbols.join(',') }, 'POST'),
+  mlReport: () => request<MLReport>('/api/ml/report'),
+  mlScores: (p: { symbol: string; tf: string; start?: string; end?: string }) => request<MLScore[]>('/api/ml/scores', p),
+  riskReport: () => request<RiskReport>('/api/risk/report'),
+  config: () => request<BotConfig>('/api/config'),
+  researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
+  researchV2Report: (symbol: string, f: ResearchV2Filters) =>
+    request<ResearchV2Report>('/api/research/v2/report', {
+      symbol,
+      tf: f.tf,
+      exit: f.exit,
+      ml_only: String(f.ml_only),
+      first_touch: String(f.first_touch),
+      min_disp_h1: f.min_disp_h1,
+      sessions: f.sessions.join(','),
+      killzones: f.killzones.join(','),
       fvg_only: String(f.fvg_only),
       confluence_only: String(f.confluence_only),
       direction: f.direction,

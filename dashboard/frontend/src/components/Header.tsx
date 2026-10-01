@@ -3,7 +3,7 @@ import Logo from './Logo'
 import { THEMES, useTheme } from '../lib/theme'
 import { IST, NY, clock, sessionAt } from '../lib/time'
 
-type Props = { pair: string; connected: boolean; dataOk: boolean }
+type Props = { pair: string; connected: boolean; dataOk: boolean; mlOk: boolean }
 
 function Led({ label, color, on, speed = '1.4s' }: { label: string; color: string; on: boolean; speed?: string }) {
   return (
@@ -48,7 +48,7 @@ function ThemePicker() {
   )
 }
 
-export default function Header({ pair, connected, dataOk }: Props) {
+export default function Header({ pair, connected, dataOk, mlOk }: Props) {
   const now = new Date(useNow(1000))
   const session = sessionAt(now)
 
@@ -65,7 +65,7 @@ export default function Header({ pair, connected, dataOk }: Props) {
       <div className="flex flex-wrap justify-center gap-7">
         <Stat label="ACTIVE PAIR" value={pair} color="var(--amber)" />
         <Stat label="MARKET SESSION" value={session.toUpperCase()} color={session === 'Off-hours' ? 'var(--muted)' : 'var(--green)'} />
-        <Stat label="STRATEGY" value="OF ZONE TAP" color="var(--cyan)" />
+        <Stat label="STRATEGY" value="ZONE TAP + ML" color="var(--cyan)" />
         <Stat label="NEW YORK" value={clock(NY, now)} color="var(--text)" />
         <Stat label="INDIA (IST)" value={clock(IST, now)} color="var(--text)" />
       </div>
@@ -74,7 +74,7 @@ export default function Header({ pair, connected, dataOk }: Props) {
         <Led label="ENGINE" color="var(--green)" on={connected} />
         <Led label="DATA" color="var(--green)" on={dataOk} speed="1.1s" />
         <Led label="BACKTEST" color="var(--amber)" on={connected} speed="2.2s" />
-        <Led label="ML" color="var(--cyan)" on={false} />
+        <Led label="ML" color="var(--cyan)" on={mlOk} speed="1.8s" />
         <ThemePicker />
       </div>
     </header>

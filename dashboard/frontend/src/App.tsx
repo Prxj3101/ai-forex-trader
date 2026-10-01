@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import AccountPanel from './components/AccountPanel'
 import AgentsPanel from './components/AgentsPanel'
 import Boot from './components/Boot'
 import ChartPanel, { type ChartSettings } from './components/ChartPanel'
@@ -12,7 +13,7 @@ import Starfield from './components/Starfield'
 import Ticker from './components/Ticker'
 import TradeLog from './components/TradeLog'
 import { agentStates } from './lib/agents'
-import { api, type AgentEvent, type AgentId, type ScanResult } from './lib/api'
+import { api, type AgentEvent, type AgentId, type BotConfig, type MLReport, type RiskReport, type ScanResult } from './lib/api'
 import { useEvents, useNow } from './lib/hooks'
 
 export default function App() {
@@ -34,6 +35,26 @@ export default function App() {
       })
       .catch(() => setSymbols({}))
   }, [connected])
+
+  // Bot ki settings (src/config.py): har pair ka apna displacement. Chart slider usi pe start ho.
+  const [botCfg, setBotCfg] = useState<BotConfig | null>(null)
+  useEffect(() => {
+    if (!connected) return
+    api.config()
+      .then((c) => {
+        setBotCfg(c)
+        setSettings((cur) => ({ ...cur, swingN: c.swing_n, minDisp: c.disp_by_symbol[cur.symbol] ?? c.default_disp }))
+      })
+      .catch(() => setBotCfg(null))
+  }, [connected])
+
+  // Pair badla -> slider us pair ki bot setting pe reset
+  const onSettings = useCallback((s: ChartSettings) => {
+    setSettings((cur) =>
+      botCfg && s.symbol !== cur.symbol ? { ...s, minDisp: botCfg.disp_by_symbol[s.symbol] ?? botCfg.default_disp } : s,
+    )
+  }, [botCfg])
+  const botDisp = botCfg ? botCfg.disp_by_symbol[settings.symbol] ?? botCfg.default_disp : undefined
 
   // Dashboard ke apne events (jaise chart load) bhi log mein dikhao
   const onLog = useCallback((message: string, agent: AgentId = 'data', status: AgentEvent['status'] = 'done') => {
@@ -78,6 +99,36 @@ export default function App() {
     return start > end && now / 1000 - wsEvents[start].ts < 300
   }, [wsEvents, now])
 
+  // ML Brain: har "trained" event pe report + chart scores refresh
+  const mlKey = useMemo(() => wsEvents.filter((e) => e.kind === 'ml').length, [wsEvents])
+  const [mlReport, setMlReport] = useState<MLReport | null>(null)
+  useEffect(() => {
+    if (!connected) return
+    api.mlReport().then(setMlReport).catch(() => setMlReport(null))
+  }, [connected, mlKey])
+
+  // Risk Agent ka account simulation (training ke baad apne aap update hota hai)
+  const [riskReport, setRiskReport] = useState<RiskReport | null>(null)
+  useEffect(() => {
+    if (!connected) return
+    api.riskReport().then(setRiskReport).catch(() => setRiskReport(null))
+  }, [connected, mlKey])
+
+  const mlTraining = useMemo(() => {
+    let start = -1
+    let end = -1
+    wsEvents.forEach((e, i) => {
+      if (e.agent === 'ml' && e.message.startsWith('Training ML Brain')) start = i
+      if (e.kind === 'ml' || (e.agent === 'ml' && e.status === 'error')) end = i
+    })
+    return start > end && now / 1000 - wsEvents[start].ts < 600
+  }, [wsEvents, now])
+
+  const onTrain = useCallback(() => {
+    const syms = mlReport?.symbols.length ? mlReport.symbols : ['EURUSD', 'USDJPY', 'GBPUSD']
+    api.mlTrain(syms).catch((e: unknown) => onLog(`ML training: ${e instanceof Error ? e.message : String(e)}`, 'ml', 'error'))
+  }, [mlReport, onLog])
+
   return (
     <>
       <Starfield />
@@ -85,13 +136,13 @@ export default function App() {
       <Boot />
 
       <div className="relative z-[1] flex flex-col gap-2.5 p-3">
-        <Header pair={settings.symbol || '---'} connected={connected} dataOk={Object.keys(symbols).length > 0} />
+        <Header pair={settings.symbol || '---'} connected={connected} dataOk={Object.keys(symbols).length > 0} mlOk={!!mlReport} />
         <Ticker symbols={Object.keys(symbols)} />
 
         <div className="grid gap-2.5 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
           <AgentsPanel states={states} />
-          <ChartPanel symbols={symbols} settings={settings} onChange={setSettings} onLog={onLog} />
-          <MLBrain />
+          <ChartPanel symbols={symbols} settings={settings} onChange={onSettings} onLog={onLog} mlKey={mlKey} botDisp={botDisp} />
+          <MLBrain report={mlReport} training={mlTraining} onTrain={onTrain} connected={connected} />
         </div>
 
         <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.3fr)_280px_minmax(0,1fr)]">
@@ -107,11 +158,14 @@ export default function App() {
           />
         </div>
 
+        <AccountPanel report={riskReport} />
+
         <ResearchPanel
           symbols={symbols}
           defaultSymbol={settings.symbol || 'USDJPY'}
           refreshKey={researchKey}
           building={researchBuilding}
+          coreSymbols={botCfg?.core_symbols ?? ['EURUSD', 'USDJPY', 'GBPUSD']}
         />
 
         <Pipeline states={states} />

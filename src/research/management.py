@@ -65,6 +65,13 @@ POLICIES = [
 def run_trade(p: Policy, bull: bool, entry: float, risk: float,
               hi: np.ndarray, lo: np.ndarray, cl: np.ndarray, sp: np.ndarray) -> tuple[float, str]:
     """Ek trade ko bar-by-bar chalata hai. Returns (R result, exit reason)."""
+    r, why, _ = run_trade_full(p, bull, entry, risk, hi, lo, cl, sp)
+    return r, why
+
+
+def run_trade_full(p: Policy, bull: bool, entry: float, risk: float,
+                   hi: np.ndarray, lo: np.ndarray, cl: np.ndarray, sp: np.ndarray) -> tuple[float, str, int]:
+    """run_trade jaisa hi, lekin exit wali candle ka number bhi deta hai (portfolio simulator ke liye)."""
     sl_r = -1.0            # SL entry se kitne R pe (shuru mein -1R)
     open_frac = 1.0        # position ka kitna hissa abhi khula hai
     realized = 0.0         # band kiye hisse ka R
@@ -83,7 +90,7 @@ def run_trade(p: Policy, bull: bool, entry: float, risk: float,
         if adv <= sl_r:
             total = realized + open_frac * sl_r
             reason = "sl" if sl_r < -0.01 else ("be" if abs(sl_r) <= 0.01 else "trail")
-            return total, reason
+            return total, reason, i
 
         # 2) Partial close
         if p.partial_r is not None and not partial_done and fav >= p.partial_r:
@@ -93,7 +100,7 @@ def run_trade(p: Policy, bull: bool, entry: float, risk: float,
 
         # 3) Target
         if p.tp_r is not None and fav >= p.tp_r:
-            return realized + open_frac * p.tp_r, "tp"
+            return realized + open_frac * p.tp_r, "tp", i
 
         # 4) Agli candle ke liye SL update (breakeven / trailing)
         best = max(best, fav)
@@ -105,7 +112,7 @@ def run_trade(p: Policy, bull: bool, entry: float, risk: float,
     # Time khatam: last close pe band
     px = cl[-1] if bull else cl[-1] + sp[-1]
     last_r = ((px - entry) if bull else (entry - px)) / risk
-    return realized + open_frac * last_r, "timeout"
+    return realized + open_frac * last_r, "timeout", len(hi) - 1
 
 
 def evaluate(ds: pd.DataFrame, m5: pd.DataFrame, policies: list[Policy]) -> pd.DataFrame:

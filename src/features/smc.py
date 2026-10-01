@@ -95,6 +95,8 @@ def find_orderflow_zones(
     last_sh = last_sl = -1
     sh_broken = sl_broken = True
     zones = []
+    used = set()   # (direction, zone candle) jo already zone ban chuki. Do BOS ek hi candle ko point karein
+                   # toh zone ek hi baar ginna hai (pehle wala), warna same trade 2 baar gina jaata hai.
 
     for i in range(len(df)):
         # Bar (i - swing_n) ka swing ab confirm hua (uske baad swing_n candles ban gayi)
@@ -109,18 +111,20 @@ def find_orderflow_zones(
         if not sh_broken and last_sh >= 0 and c[i] > h[last_sh]:
             sh_broken = True
             ob = _find_opposite_candle(o, c, i, max_ob_lookback, bullish=True)
-            if ob is not None and a[ob] > 0:
+            if ob is not None and a[ob] > 0 and ("bull", ob) not in used:
                 disp = (c[i] - l[ob]) / a[ob]
                 if disp >= min_disp_atr:
+                    used.add(("bull", ob))
                     zones.append(_zone_row("bull", ob, i, last_sh, disp, o, h, l, c, a, times, close_times))
 
         # ---------------- Bearish BOS ----------------
         if not sl_broken and last_sl >= 0 and c[i] < l[last_sl]:
             sl_broken = True
             ob = _find_opposite_candle(o, c, i, max_ob_lookback, bullish=False)
-            if ob is not None and a[ob] > 0:
+            if ob is not None and a[ob] > 0 and ("bear", ob) not in used:
                 disp = (h[ob] - c[i]) / a[ob]
                 if disp >= min_disp_atr:
+                    used.add(("bear", ob))
                     zones.append(_zone_row("bear", ob, i, last_sl, disp, o, h, l, c, a, times, close_times))
 
     return pd.DataFrame(zones)

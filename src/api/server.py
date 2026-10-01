@@ -13,6 +13,13 @@ Endpoints:
     GET  /api/candles    -> chart ke liye candles
     GET  /api/zones      -> kisi window ke orderflow zones
     POST /api/scan       -> 10 saal ka zone scan chalao (agents live dikhenge)
+    POST /api/ml/train   -> ML Brain walk-forward training (ML agent live dikhega)
+    GET  /api/ml/report  -> ML ke test results (score buckets, saal-wise PF, features)
+    GET  /api/ml/scores  -> chart window ke trades ka out-of-sample ML score
+    GET  /api/risk/report-> Risk Agent ka realistic account simulation (equity curve, drawdown, yearly %)
+    GET  /api/config     -> bot settings (har pair ka displacement, core pairs)
+    POST /api/research/v2/build  -> ek pair ka dataset v2 dobara banao
+    GET  /api/research/v2/report -> research panel (NET of costs, exit choice, ML toggle, filters)
     WS   /ws             -> live agent events (dashboard yahan se sunta hai)
 
 Rule: ye server sirf data DIKHATA aur tests CHALATA hai. Trading logic src/features,
@@ -112,6 +119,14 @@ def zones_to_json(z: pd.DataFrame) -> list[dict]:
 @app.get("/api/health")
 def health():
     return {"status": "ok", "time": time.time()}
+
+
+@app.get("/api/config")
+def bot_config():
+    """Bot ki settings (src/config.py): har pair ka displacement, core pairs."""
+    from src import config
+    return {"swing_n": config.SWING_N, "core_symbols": config.CORE_SYMBOLS,
+            "disp_by_symbol": config.DISP_BY_SYMBOL, "default_disp": config.DEFAULT_DISP}
 
 
 @app.get("/api/symbols")
@@ -247,6 +262,172 @@ def research_report(symbol: str = "USDJPY", tf: str = "M15", min_disp_h1: float 
     if rep is None:
         raise HTTPException(404, f"No research dataset for {symbol} {tf}. Build it first.")
     return rep
+
+
+# ----------------------------------------------------------------------
+# Research v2: dataset v2, NET of costs, exit choice, ML toggle (dashboard STRATEGY RESEARCH panel)
+# ----------------------------------------------------------------------
+def run_research_v2(symbol: str) -> None:
+    try:
+        from src.research import zone_dataset_v2
+
+        bus.emit("data", f"Building research dataset v2: {symbol}", progress=5)
+
+        def log(agent: str, msg: str, pct=None):
+            bus.emit(agent, msg, status="done" if pct == 100 else "active", progress=pct)
+
+        ds = zone_dataset_v2.build(symbol, log=log)          # swing + displacement src/config.py se
+        zone_dataset_v2.save(ds, symbol)
+        bus.emit("system", f"Research v2 ready: {symbol}, {len(ds):,} trades. Retrain the ML Brain to update scores.",
+                 status="done", kind="research", data={"symbol": symbol, "trades": len(ds)})
+    except Exception as e:
+        bus.emit("system", f"Research failed: {e}", status="error")
+    finally:
+        research_lock.release()
+
+
+@app.post("/api/research/v2/build")
+def research_v2_build(symbol: str = "USDJPY"):
+    for t in ("M5", "M15", "H1", "H4", "D1"):
+        load(symbol, t)
+    if not research_lock.acquire(blocking=False):
+        raise HTTPException(409, "A research build is already running")
+    threading.Thread(target=run_research_v2, args=(symbol,), daemon=True).start()
+    return {"started": True}
+
+
+@app.get("/api/research/v2/report")
+def research_v2_report(symbol: str = "USDJPY", tf: str = "M15", exit: str = "brain", ml_only: bool = True,
+                       first_touch: bool = True, min_disp_h1: float = 0, sessions: str = "", killzones: str = "",
+                       fvg_only: bool = False, confluence_only: bool = False, direction: str = "both"):
+    from src.research import analysis_v2
+
+    if exit not in analysis_v2.EXITS:
+        raise HTTPException(400, f"exit must be one of {list(analysis_v2.EXITS)}")
+    rep = analysis_v2.report(
+        symbol, tf, exit_=exit, ml_only=ml_only, first_touch=first_touch, min_disp_h1=min_disp_h1,
+        sessions=[s for s in sessions.split(",") if s], killzones=[k for k in killzones.split(",") if k],
+        fvg_only=fvg_only, confluence_only=confluence_only, direction=direction,
+    )
+    if rep is None:
+        raise HTTPException(404, f"No dataset v2 for {symbol}. Build it first.")
+    return rep
+
+
+# ----------------------------------------------------------------------
+# ML Brain: walk-forward training + scores
+# ----------------------------------------------------------------------
+import json  # noqa: E402
+
+RESEARCH = ROOT / "data" / "research"
+ml_lock = threading.Lock()
+SIM_CAPITAL = 10_000     # account simulation ka starting capital (USD)
+SIM_RISK = 0.25          # % risk per trade (+ 5% drawdown brake + 9% kill switch, src/risk/portfolio_sim.py RiskConfig)
+
+
+def run_ml_train(symbols: list[str]) -> None:
+    try:
+        from src.ml import walkforward   # yahan import: lightgbm na ho toh baaki server phir bhi chale
+
+        bus.emit("ml", f"Training ML Brain on {', '.join(symbols)} (walk-forward)", progress=5)
+        step = {"n": 0}
+
+        def log(msg: str):
+            step["n"] += 1
+            bus.emit("ml", msg.strip(), progress=min(95, 5 + step["n"] * 10))
+
+        res, _ = walkforward.train(symbols, log=log)
+        allr = next(r for r in res["summary"] if r["keep"] == 1.0)
+        bot = res["bot"]
+        bus.emit("ml", f"Unseen years (net of costs): all zones PF {allr['pf_trail']} -> bot PF {bot['pf']}",
+                 status="done", progress=100)
+
+        # Risk Agent: naye ML ke trades pe realistic account simulation
+        from src.risk import portfolio_sim
+        bus.emit("risk", f"Simulating ${SIM_CAPITAL:,.0f} account ({SIM_RISK}% risk, ${walkforward.COMMISSION:g}/lot)", progress=30)
+        sim = portfolio_sim.run(SIM_CAPITAL, SIM_RISK, walkforward.COMMISSION)
+        portfolio_sim.save(sim)
+        bus.emit("risk", f"Account sim: {sim['cagr_pct']}%/yr, max drawdown {sim['max_drawdown_pct']}%, "
+                         f"{sim['trades_per_month']} trades/month", status="done", progress=100)
+        bus.emit("system", "ML Brain trained", status="done", kind="ml", data={"bot_pf": bot["pf"]})
+    except Exception as e:
+        bus.emit("ml", f"Training failed: {e}", status="error")
+    finally:
+        ml_lock.release()
+
+
+@app.post("/api/ml/train")
+def ml_train(symbols: str = "EURUSD,USDJPY,GBPUSD"):     # = src/config.py CORE_SYMBOLS
+    syms = [s for s in symbols.split(",") if s]
+    missing = [s for s in syms if not (RESEARCH / f"{s}_v2.parquet").exists()]
+    if missing:
+        raise HTTPException(404, f"Dataset v2 missing for {', '.join(missing)}. Run zone_dataset_v2.py first.")
+    if not ml_lock.acquire(blocking=False):
+        raise HTTPException(409, "ML training is already running")
+    threading.Thread(target=run_ml_train, args=(syms,), daemon=True).start()
+    return {"started": True}
+
+
+@app.get("/api/ml/report")
+def ml_report():
+    f = RESEARCH / "ml_walkforward.json"
+    if not f.exists():
+        raise HTTPException(404, "ML Brain not trained yet")
+    r = json.loads(f.read_text())
+    imp = sorted(r.get("importance", {}).items(), key=lambda kv: -kv[1])[:10]
+    return {
+        "trained_at": r.get("trained_at"),
+        "symbols": r.get("symbols", []),
+        "n_trades": r.get("n_trades"),
+        "n_features": len(r.get("features", [])),
+        "first_test_year": r.get("first_test_year", 2019),
+        "summary": r["summary"],
+        "score_buckets": r["score_buckets"],
+        "by_year": r["by_year"],
+        "by_symbol": r["by_symbol"],
+        "importance": [{"feature": k, "pct": v} for k, v in imp],
+        "exits": r.get("exits", []),
+        "bot": r.get("bot"),
+        "commission": r.get("commission"),
+        "slippage_pips": r.get("slippage_pips"),
+        "net": r.get("results_are") == "net of costs",
+    }
+
+
+@app.get("/api/risk/report")
+def risk_report():
+    """Risk Agent ka account simulation (portfolio_sim.json)."""
+    f = RESEARCH / "portfolio_sim.json"
+    if not f.exists():
+        raise HTTPException(404, "No account simulation yet. Retrain the ML Brain or run portfolio_sim.py.")
+    return json.loads(f.read_text())
+
+
+@lru_cache(maxsize=2)
+def _ml_scores(mtime: float) -> pd.DataFrame:
+    return pd.read_parquet(RESEARCH / "ml_scores.parquet")
+
+
+@app.get("/api/ml/scores")
+def ml_scores(symbol: str, tf: str = "M15", start: str | None = None, end: str | None = None):
+    """Chart window ke trades ka OUT-OF-SAMPLE ML score (walk-forward test se)."""
+    f = RESEARCH / "ml_scores.parquet"
+    if not f.exists():
+        return []
+    s = _ml_scores(f.stat().st_mtime)
+    s = s[(s["symbol"] == symbol) & (s["zone_tf"] == tf)]
+    if start:
+        s = s[s["fill_time"] >= pd.Timestamp(start, tz="UTC")]
+    if end:
+        s = s[s["fill_time"] <= pd.Timestamp(end, tz="UTC")]
+    return [
+        {"fill_time": to_unix(r.fill_time), "zone_candle_time": to_unix(r.zone_candle_time),
+         "direction": r.direction, "touch_number": int(r.touch_number), "entry": clean(r.entry), "sl": clean(r.sl),
+         "score": round(float(r.score), 3), "keep_top30": bool(r.keep_0_3), "keep_top50": bool(r.keep_0_5),
+         "r_trail": clean(r.r_trail), "exit": r.r_trail_exit,
+         "exit_ml": getattr(r, "exit_ml", None), "r_ml": clean(getattr(r, "r_ml", np.nan))}
+        for r in s.rename(columns={"keep_0.3": "keep_0_3", "keep_0.5": "keep_0_5"}).itertuples(index=False)
+    ]
 
 
 # ----------------------------------------------------------------------

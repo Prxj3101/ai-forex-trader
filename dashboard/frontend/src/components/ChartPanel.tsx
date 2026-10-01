@@ -3,17 +3,20 @@ import {
   ColorType,
   CrosshairMode,
   createChart,
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
-import { api, type Candle, type Zone } from '../lib/api'
+import { api, type Candle, type MLScore, type Zone } from '../lib/api'
 import { NY, addDays, fmtTick, fmtTs, nyToUtcString } from '../lib/time'
 import { rgba, useTheme } from '../lib/theme'
-import { ZonesPrimitive } from '../lib/zonesPrimitive'
+import { ZonesPrimitive, type LabelMode } from '../lib/zonesPrimitive'
 
 export type ChartSettings = {
   symbol: string
@@ -28,20 +31,59 @@ type Props = {
   symbols: Record<string, string[]>
   settings: ChartSettings
   onChange: (s: ChartSettings) => void
-  onLog: (message: string, agent?: 'data' | 'zone', status?: 'active' | 'done' | 'error') => void
+  onLog: (message: string, agent?: 'data' | 'zone' | 'ml', status?: 'active' | 'done' | 'error') => void
+  mlKey: number
+  botDisp?: number      // is pair ke liye bot ki displacement setting (src/config.py)
 }
 
 const TFS = ['M5', 'M15', 'H1', 'H4', 'D1']
 
-export default function ChartPanel({ symbols, settings, onChange, onLog }: Props) {
+// ML score -> marker color: green = model ke top 30% (bot lega), amber = top 50%, red = skip
+const scoreColor = (s: MLScore) => (s.keep_top30 ? '#00ff88' : s.keep_top50 ? '#ffc400' : '#ff2e63')
+
+/** ML scores ko chart markers mein badlo. Fill time M5 ka hai -> us TF ki candle pe snap karo. */
+function toMarkers(scores: MLScore[], times: number[]): SeriesMarker<Time>[] {
+  const out: SeriesMarker<Time>[] = []
+  for (const s of scores) {
+    let lo = 0
+    let hi = times.length - 1
+    let k = -1
+    while (lo <= hi) {        // binary search: aakhri candle jiska time <= fill time
+      const mid = (lo + hi) >> 1
+      if (times[mid] <= s.fill_time) {
+        k = mid
+        lo = mid + 1
+      } else hi = mid - 1
+    }
+    if (k < 0) continue
+    const bull = s.direction === 'bull'
+    out.push({
+      time: times[k] as UTCTimestamp,
+      position: bull ? 'belowBar' : 'aboveBar',
+      shape: bull ? 'arrowUp' : 'arrowDown',
+      color: scoreColor(s),
+      text: `${Math.round(s.score * 100)}%${s.touch_number > 1 ? ` T${s.touch_number}` : ''}${
+        s.keep_top30 && s.exit_ml ? (s.exit_ml === 'trail' ? ' TRAIL' : ' 1:1') : ''
+      }`,
+    })
+  }
+  return out.sort((a, b) => (a.time as number) - (b.time as number))
+}
+
+export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, botDisp }: Props) {
   const { theme } = useTheme()
   const boxRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const zonesRef = useRef<ZonesPrimitive | null>(null)
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const candlesRef = useRef<Candle[]>([])
   const [hud, setHud] = useState<Candle | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
+  const [scores, setScores] = useState<MLScore[]>([])
+  const [labelMode, setLabelMode] = useState<LabelMode>('live')
+  const [showMl, setShowMl] = useState(true)
+  const timesRef = useRef<number[]>([])
   // Kaunsi settings ka data load ho chuka hai. Settings badli aur data abhi nahi aaya = loading.
   const [loaded, setLoaded] = useState<{ key: string; error: string | null } | null>(null)
   const settingsKey = JSON.stringify(settings)
@@ -80,6 +122,7 @@ export default function ChartPanel({ symbols, settings, onChange, onLog }: Props
     })
     const prim = new ZonesPrimitive()
     series.attachPrimitive(prim)
+    const markers = createSeriesMarkers(series, [])
 
     chart.subscribeCrosshairMove((p) => {
       if (!p.time) {
@@ -93,11 +136,13 @@ export default function ChartPanel({ symbols, settings, onChange, onLog }: Props
     chartRef.current = chart
     seriesRef.current = series
     zonesRef.current = prim
+    markersRef.current = markers
     return () => {
       chart.remove()
       chartRef.current = null
       seriesRef.current = null
       zonesRef.current = null
+      markersRef.current = null
     }
   }, [])
 
@@ -127,21 +172,29 @@ export default function ChartPanel({ symbols, settings, onChange, onLog }: Props
     Promise.all([
       api.candles({ symbol, tf, start, end, limit: 20000 }),
       api.zones({ symbol, tf, start, end, swing_n: swingN, min_disp: minDisp }),
+      api.mlScores({ symbol, tf, start, end }).catch(() => [] as MLScore[]),
     ])
-      .then(([candles, zs]) => {
+      .then(([candles, zs, sc]) => {
         if (cancelled) return
         candlesRef.current = candles
         seriesRef.current?.setData(
           candles.map((c) => ({ time: c.time as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close })),
         )
-        zonesRef.current?.setZones(zs, candles.map((c) => c.time))
+        const times = candles.map((c) => c.time)
+        timesRef.current = times
+        zonesRef.current?.setZones(zs, times)
         chartRef.current?.timeScale().fitContent()
         setHud(candles[candles.length - 1] ?? null)
         setZones(zs)
+        setScores(sc)
         setLoaded({ key, error: null })
         onLog(`${candles.length.toLocaleString()} candles loaded`, 'data', 'done')
         const bull = zs.filter((z) => z.direction === 'bull').length
         onLog(`${zs.length} orderflow zones in view (${bull} demand, ${zs.length - bull} supply)`, 'zone', 'done')
+        if (sc.length) {
+          const take = sc.filter((s) => s.keep_top30).length
+          onLog(`${sc.length} trades scored, ${take} in top 30% (would be taken)`, 'ml', 'done')
+        }
       })
       .catch((e: unknown) => {
         if (cancelled) return
@@ -153,7 +206,15 @@ export default function ChartPanel({ symbols, settings, onChange, onLog }: Props
     return () => {
       cancelled = true
     }
-  }, [settings, onLog])
+  }, [settings, onLog, mlKey])
+
+  // Labels / ML arrows toggle -> sirf drawing update (data dobara load nahi)
+  useEffect(() => {
+    zonesRef.current?.setLabelMode(labelMode)
+  }, [labelMode])
+  useEffect(() => {
+    markersRef.current?.setMarkers(showMl ? toMarkers(scores, timesRef.current) : [])
+  }, [scores, showMl])
 
   const set = <K extends keyof ChartSettings>(k: K, v: ChartSettings[K]) => onChange({ ...settings, [k]: v })
   const tfs = symbols[settings.symbol] ?? TFS
@@ -189,7 +250,28 @@ export default function ChartPanel({ symbols, settings, onChange, onLog }: Props
           <input type="range" min={1} max={4} step={0.25} value={settings.minDisp} onChange={(e) => set('minDisp', Number(e.target.value))} />
           <b className="w-10 font-normal" style={{ color: 'var(--cyan)' }}>{settings.minDisp.toFixed(2)}x</b>
         </label>
+        {botDisp !== undefined && (
+          <button
+            className={`chip ${settings.minDisp === botDisp && settings.swingN === 1 ? 'on' : ''}`}
+            onClick={() => onChange({ ...settings, minDisp: botDisp, swingN: 1 })}
+            title="The setting the bot and ML actually use for this pair. ML arrows only exist for these zones."
+          >
+            BOT SETTING {botDisp}x
+          </button>
+        )}
+        <label className="flex items-center gap-2" title="Zone text labels: all zones, only live (not invalidated) zones, or none">
+          LABELS
+          {(['all', 'live', 'none'] as const).map((m) => (
+            <button key={m} className={`chip ${labelMode === m ? 'on' : ''}`} onClick={() => setLabelMode(m)}>{m.toUpperCase()}</button>
+          ))}
+        </label>
+        <button className={`chip ${showMl ? 'on' : ''}`} onClick={() => setShowMl((v) => !v)} title="Show or hide ML score arrows">
+          ML ARROWS {showMl ? 'ON' : 'OFF'}
+        </button>
         <span>ZONES IN VIEW <b className="font-normal" style={{ color: 'var(--green)' }}>{zones.length}</b></span>
+        <span title="Trades in view with an out-of-sample ML score">
+          ML SCORED <b className="font-normal" style={{ color: '#ffc400' }}>{scores.length}</b>
+        </span>
         <span>TIME: NEW YORK</span>
       </div>
 
@@ -219,6 +301,13 @@ export default function ChartPanel({ symbols, settings, onChange, onLog }: Props
         <span><i className="mr-1.5 inline-block h-2.5 w-2.5 align-[-1px]" style={{ background: 'rgba(255,46,99,.3)', border: '1px solid var(--red)' }} />Supply zone</span>
         <span>Dashed line = limit entry (zone body)</span>
         <span>Faded box = invalidated zone</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-4 text-[10px] text-muted" title="Scores come from walk-forward testing: the model never saw that year during training. Available for M15/H1 from 2019, only for zones found with the BOT SETTING of this pair.">
+        <span>ML arrows at fill:</span>
+        <span style={{ color: '#00ff88' }}>▲ top 30% (take)</span>
+        <span style={{ color: '#ffc400' }}>▲ top 50%</span>
+        <span style={{ color: '#ff2e63' }}>▲ low score (skip)</span>
+        <span>T2/T3 = 2nd/3rd touch · 1:1 / TRAIL = exit chosen by ML · out-of-sample scores</span>
       </div>
     </div>
   )

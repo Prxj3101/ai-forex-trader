@@ -11,6 +11,10 @@ v1 se farak:
        - Premium/Discount: entry H4 (last 30 candles) aur D1 (last 20) range mein kahan hai (0 = bottom, 1 = top)
        - HTF bias        : H4 aur D1 ka aakhri BOS kis direction mein tha
        - Killzone        : fill London open (02-05 NY), NY open (07-10 NY), Asia open (19-22 NY) mein hua?
+       - Displacement quality (Prajwal ke screenshots se): impulse_candles, impulse_body_pct, disp_d1,
+                           followthrough_atr (zone banne ke baad price kitna door gaya)
+       - Local trend     : trend_tf_aligned / trend_h1_aligned (HH/HL vs LH/LL swings, -6..+6; minus = trend ke ulta)
+       - Approach        : approach_1h_atr / approach_3h_atr / approach_push (price zone mein kitna tez aaya)
   4. Labels: 3 exit rules ka R ek saath: r_trail (trailing 1R after 1R, best tha),
      r_tp1 (fixed 1:1), r_tp2 (fixed 1:2). `win` = r_trail > 0.
 
@@ -20,7 +24,8 @@ Touch rules:
   - Zone khatam: koi M5 candle wick ke paar CLOSE ho, ya trade SL (-1R) pe gaya, ya life khatam.
 
 Chalane ka tareeka (ai-forex-trader folder se, venv active karke):
-    python src\research\zone_dataset_v2.py --symbol EURUSD USDJPY GBPUSD
+    python src\research\zone_dataset_v2.py                       (3 core pairs, har pair ka displacement src/config.py se)
+    python src\research\zone_dataset_v2.py --symbol EURUSD --disp 2.0   (manual override)
 
 Output: data/research/{SYMBOL}_v2.parquet (har trade = ek row) + terminal pe summary.
 LOOKAHEAD RULE: zone features sirf created_at tak ka data; fill features (time, killzone, touch)
@@ -38,7 +43,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.features.smc import find_orderflow_zones, structure_breaks, track_zones  # noqa: E402
+from src import config  # noqa: E402
+from src.features.smc import atr, find_orderflow_zones, find_swings, structure_breaks, track_zones  # noqa: E402
 from src.research.management import POLICIES, run_trade  # noqa: E402
 from src.research.zone_dataset import OUT, add_features, load, session_of  # noqa: E402
 
@@ -64,11 +70,46 @@ def asian_ranges(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({"asia_high": g["high"].max(), "asia_low": g["low"].min()})
 
 
+class SwingTrend:
+    """
+    Local trend = pichle swings ka pattern (Prajwal: "market lower low bana raha tha").
+    Aakhri 4 confirmed swing highs aur 4 swing lows dekhte hain -> 3+3 comparisons:
+      HH (higher high) +1, HL (higher low) +1, LH (lower high) -1, LL (lower low) -1
+    score +6 = strong uptrend, -6 = strong downtrend, 0 = range.
+    Swing k tab confirm hota hai jab uske baad n candles ban jaayein (no lookahead).
+    """
+
+    def __init__(self, df: pd.DataFrame, n: int = 2):
+        is_h, is_l = find_swings(df, n)
+        self.n = n
+        self.sh = np.nonzero(is_h)[0]
+        self.sl = np.nonzero(is_l)[0]
+        self.h = df["high"].to_numpy()
+        self.l = df["low"].to_numpy()
+
+    def score(self, i: int) -> float:
+        """Candle i band hone tak confirmed swings ka trend score."""
+        k_max = i - self.n
+        if k_max < 0:
+            return np.nan
+        hs = self.sh[: np.searchsorted(self.sh, k_max, side="right")][-4:]
+        ls = self.sl[: np.searchsorted(self.sl, k_max, side="right")][-4:]
+        if len(hs) < 4 or len(ls) < 4:
+            return np.nan
+        dh = np.sign(np.diff(self.h[hs]))
+        dl = np.sign(np.diff(self.l[ls]))
+        return float(dh.sum() + dl.sum())
+
+
 def zone_context(z: pd.DataFrame, df: pd.DataFrame, h4: pd.DataFrame, d1: pd.DataFrame,
-                 bias_h4: pd.DataFrame, bias_d1: pd.DataFrame) -> pd.DataFrame:
+                 bias_h4: pd.DataFrame, bias_d1: pd.DataFrame, h1: pd.DataFrame) -> pd.DataFrame:
     hi, lo = df["high"].to_numpy(), df["low"].to_numpy()
+    op, cl = df["open"].to_numpy(), df["close"].to_numpy()
     idx = df.index
     asia = asian_ranges(df)
+    trend_tf = SwingTrend(df, 2)
+    trend_h1 = SwingTrend(h1, 2)
+    d1_atr = atr(d1).to_numpy()
     bars_6h = int(round(6 * 60 / ((idx[1] - idx[0]).total_seconds() / 60)))
     bars_24h = 4 * bars_6h
 
@@ -118,6 +159,22 @@ def zone_context(z: pd.DataFrame, df: pd.DataFrame, h4: pd.DataFrame, d1: pd.Dat
         pos_h4, pos_d1 = range_pos(h4, 30), range_pos(d1, 20)
         b4, bd = last_bias(bias_h4, r.created_at), last_bias(bias_d1, r.created_at)
 
+        # --- Displacement quality (Prajwal: "orderflow strong nahi tha, ek candle ke baad hi reverse") ---
+        seg = slice(ob + 1, i + 1)                      # zone candle ke baad se BOS candle tak
+        bodies = (cl[seg] - op[seg]) if bull else (op[seg] - cl[seg])
+        rng = (hi[seg] - lo[seg]).sum()
+        impulse_candles = int((bodies > 0).sum())       # direction mein band hui candles
+        impulse_body_pct = float(bodies[bodies > 0].sum() / rng) if rng > 0 else np.nan
+        move = (cl[i] - r.bottom) if bull else (r.top - cl[i])
+        dk = last_closed(d1, r.created_at)
+        disp_d1 = float(move / d1_atr[dk]) if dk >= 0 and d1_atr[dk] > 0 else np.nan
+
+        # --- Local trend (swings) ---
+        t_tf = trend_tf.score(i)
+        k_h1 = last_closed(h1, r.created_at)
+        t_h1 = trend_h1.score(k_h1) if k_h1 >= 0 else np.nan
+        sgn = 1 if bull else -1
+
         rows.append(dict(
             sweep_6h=swept(bars_6h), sweep_24h=swept(bars_24h), sweep_asia=swept_asia, sweep_prev_day=swept_pd,
             range_pos_h4=pos_h4, range_pos_d1=pos_d1,
@@ -126,6 +183,9 @@ def zone_context(z: pd.DataFrame, df: pd.DataFrame, h4: pd.DataFrame, d1: pd.Dat
             pd_aligned_d1=(pos_d1 < 0.5) if bull else (pos_d1 > 0.5),
             bias_h4=b4, bias_d1=bd,
             bias_h4_aligned=b4 == r.direction, bias_d1_aligned=bd == r.direction,
+            impulse_candles=impulse_candles, impulse_body_pct=impulse_body_pct, disp_d1=disp_d1,
+            # trend "aligned": + = trend zone ke saath (buy in uptrend), - = ulta (buy in lower lows)
+            trend_tf_aligned=t_tf * sgn, trend_h1_aligned=t_h1 * sgn,
         ))
     return pd.concat([z.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
 
@@ -144,7 +204,40 @@ def killzone(ts: pd.Timestamp) -> str:
     return "none"
 
 
-def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame) -> pd.DataFrame:
+def fill_context(bull: bool, entry: float, a: float, s: int, f: int,
+                 hi: np.ndarray, lo: np.ndarray, cl: np.ndarray) -> dict:
+    """
+    Fill se PEHLE ki M5 candles (fill wali candle shaamil nahi) -> no lookahead.
+      followthrough_atr : zone banne ke baad price zone se kitna door gaya (displacement aage chala?)
+      approach_1h/3h_atr: fill se pehle 1h / 3h mein price zone ki taraf kitna tez aaya
+                          (Prajwal: "sharp fall zone mein aaya -> sirf reaction milega, 1:1 lo")
+      approach_push     : last 12 candles mein se kitni zone ki taraf band hui (0-1)
+    """
+    out = {}
+    if f > s:
+        far = hi[s:f].max() - entry if bull else entry - lo[s:f].min()
+        out["followthrough_atr"] = float(far / a)
+    else:
+        out["followthrough_atr"] = 0.0
+    for name, n in (("approach_1h_atr", 12), ("approach_3h_atr", 36)):
+        k = max(f - n, 0)
+        # bull: price upar se neeche zone mein aata hai -> (pehle ka close - entry)
+        out[name] = float(((cl[k] - entry) if bull else (entry - cl[k])) / a) if f > k else 0.0
+    k = max(f - 12, 1)
+    steps = np.diff(cl[k - 1:f])
+    toward = (steps < 0) if bull else (steps > 0)
+    out["approach_push"] = float(toward.mean()) if len(steps) else np.nan
+    return out
+
+
+def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame, entry_mode: str = "body") -> pd.DataFrame:
+    """
+    entry_mode:
+      "body"        : limit exactly zone body edge pe. BUY tab bharta hai jab ASK wahan aaye.
+      "body_spread" : BUY limit = body top + spread (zone bante waqt ka). Matlab jab chart ka BID
+                      zone ko chhuye tabhi order bhar jaye ("exact tap" wale trades miss na hon).
+                      SELL pe koi farak nahi (SELL limit waise bhi BID pe bharta hai = chart price).
+    """
     lo, hi, cl, sp = (m5[c].to_numpy() for c in ["low", "high", "close", "spread"])
     idx = m5.index
     life, hold = LIFE_DAYS * BARS_PER_DAY, HOLD_DAYS * BARS_PER_DAY
@@ -153,6 +246,8 @@ def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame) -> pd.DataFrame:
     for zi, r in enumerate(z.itertuples(index=False)):
         bull = r.direction == "bull"
         entry = r.body_top if bull else r.body_bottom
+        if entry_mode == "body_spread" and bull:
+            entry += r.spread_atr * r.atr      # spread at zone creation (pehle se pata hai, no lookahead)
         buf = SL_BUFFER_ATR * r.atr
         sl = (r.bottom - buf) if bull else (r.top + buf)
         risk = abs(entry - sl)
@@ -181,6 +276,7 @@ def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame) -> pd.DataFrame:
             row = dict(zone_id=zi, touch_number=touch, fill_time=idx[f], entry=entry, sl=sl, risk=risk,
                        bars_since_created=f - s, killzone=killzone(idx[f]), session_fill=session_of(idx[f]),
                        fill_hour_ny=idx[f].tz_convert(NY).hour, fill_weekday=idx[f].tz_convert(NY).weekday())
+            row.update(fill_context(bull, entry, r.atr, s, f, hi, lo, cl))
             for col, p in LABEL_POLICIES.items():
                 rr, why = run_trade(p, bull, entry, risk, hi[f:g], lo[f:g], cl[f:g], sp[f:g])
                 row[col] = round(float(rr), 3)
@@ -210,13 +306,18 @@ def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame) -> pd.DataFrame:
 def zones_for(tf_df, h1, h4, h1_zones, d1, bias_h4, bias_d1, swing_n, min_disp, zone_tf):
     z = track_zones(find_orderflow_zones(tf_df, swing_n=swing_n, min_disp_atr=min_disp), tf_df)
     z = add_features(z, tf_df, h1, h4, h1_zones)          # v1 wale features
-    z = zone_context(z, tf_df, h4, d1, bias_h4, bias_d1)   # v2 wale naye features
+    z = zone_context(z, tf_df, h4, d1, bias_h4, bias_d1, h1)   # v2 wale naye features
     z["zone_tf"] = zone_tf
     return z
 
 
-def build(symbol: str, swing_n: int = 1, min_disp: float = 2.0, log=None) -> pd.DataFrame:
+def build(symbol: str, swing_n: int | None = None, min_disp: float | None = None, log=None,
+          entry_mode: str = "body") -> pd.DataFrame:
+    """swing_n / min_disp na do toh src/config.py se (har pair ka apna displacement)."""
+    swing_n = config.SWING_N if swing_n is None else swing_n
+    min_disp = config.disp_for(symbol) if min_disp is None else min_disp
     say = log or (lambda agent, msg, pct=None: print(f"[{agent}] {msg}"))
+    say("zone", f"{symbol}: swing {swing_n}, min displacement {min_disp}x ATR", None)
     t0 = time.time()
     m5, m15, h1, h4, d1 = (load(symbol, tf) for tf in ["M5", "M15", "H1", "H4", "D1"])
     say("data", f"{symbol}: M5/M15/H1/H4/D1 loaded", 100)
@@ -228,7 +329,7 @@ def build(symbol: str, swing_n: int = 1, min_disp: float = 2.0, log=None) -> pd.
     for tf, df in [("M15", m15), ("H1", h1)]:
         z = zones_for(df, h1, h4, h1_zones, d1, bias_h4, bias_d1, swing_n, min_disp, tf)
         say("zone", f"{symbol} {tf}: {len(z):,} zones + features", 50)
-        t = simulate_touches(z, m5)
+        t = simulate_touches(z, m5, entry_mode)
         z = z.reset_index(drop=True)
         t = t.merge(z, left_on="zone_id", right_index=True, how="left", suffixes=("", "_zone"))
         t["zone_id"] = tf + "_" + t["zone_id"].astype(str)
@@ -236,7 +337,7 @@ def build(symbol: str, swing_n: int = 1, min_disp: float = 2.0, log=None) -> pd.
         say("zone", f"{symbol} {tf}: {len(t):,} trades simulated", 100)
 
     ds = pd.concat(parts, ignore_index=True).sort_values("fill_time").reset_index(drop=True)
-    ds["symbol"], ds["swing_n"], ds["min_disp"] = symbol, swing_n, min_disp
+    ds["symbol"], ds["swing_n"], ds["min_disp"], ds["entry_mode"] = symbol, swing_n, min_disp, entry_mode
     ds["win"] = ds["r_trail"] > 0
     say("zone", f"{symbol}: dataset v2 ready, {len(ds):,} trades in {time.time() - t0:.0f}s", 100)
     return ds
@@ -280,14 +381,16 @@ def summary(ds: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Zone dataset v2 (multi-touch, H1 zones, sweep, PD, HTF bias, killzone)")
-    p.add_argument("--symbol", nargs="+", default=["EURUSD", "USDJPY", "GBPUSD"])
-    p.add_argument("--swing", type=int, default=1)
-    p.add_argument("--disp", type=float, default=2.0)
+    p.add_argument("--symbol", nargs="+", default=config.CORE_SYMBOLS)
+    p.add_argument("--swing", type=int, default=None, help="default: src/config.py (SWING_N)")
+    p.add_argument("--disp", type=float, default=None, help="default: har pair ka apna (src/config.py DISP_BY_SYMBOL)")
+    p.add_argument("--entry", choices=["body", "body_spread"], default="body",
+                   help="body = limit at zone body edge; body_spread = BUY limit raised by the spread")
     a = p.parse_args()
 
     pd.set_option("display.width", 200)
     for sym in a.symbol:
-        ds = build(sym, a.swing, a.disp)
+        ds = build(sym, a.swing, a.disp, entry_mode=a.entry)
         print(f"saved -> {save(ds, sym)}\n")
         for name, t in summary(ds).items():
             print(f"== {sym}: {name} ==")

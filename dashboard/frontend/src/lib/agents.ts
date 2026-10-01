@@ -10,7 +10,7 @@ export const AGENTS: AgentInfo[] = [
   { id: 'structure', name: 'STRUCTURE AGENT', color: '#b98cff', tip: 'Detects swings, BOS and CHoCH', pipeline: 'BOS / CHoCH', robot: 'twin' },
   { id: 'zone', name: 'ZONE HUNTER', color: '#00ff88', tip: 'Finds orderflow zones, FVGs and liquidity', pipeline: 'orderflow zone', robot: 'antenna' },
   { id: 'ml', name: 'ML BRAIN', color: '#ffc400', tip: 'Scores each zone: probability it works', pipeline: 'probability', robot: 'dome' },
-  { id: 'risk', name: 'RISK AGENT', color: '#ff5cc8', tip: 'Position size, stop loss, daily loss limit', pipeline: 'lot + SL', robot: 'crest' },
+  { id: 'risk', name: 'RISK AGENT', color: '#ff5cc8', tip: 'Position size, costs, daily loss limit, account simulation', pipeline: 'lot + SL', robot: 'crest' },
   { id: 'execution', name: 'EXECUTION AGENT', color: '#ff2e63', tip: 'Sends orders to the demo account', pipeline: 'order', robot: 'bolt' },
 ]
 
@@ -28,8 +28,8 @@ export const agentName = (id: AgentId) => AGENTS.find((a) => a.id === id)?.name 
 
 export type AgentState = { status: 'active' | 'done' | 'idle' | 'error' | 'offline'; message: string; progress: number }
 
-// ML, Risk, Execution abhi bane nahi hain -> OFFLINE dikhayenge (jhooth nahi bolenge)
-const NOT_BUILT: AgentId[] = ['ml', 'risk', 'execution']
+// Execution abhi bana nahi hai -> OFFLINE dikhayenge (jhooth nahi bolenge). Risk Agent v1 = account simulation.
+const NOT_BUILT: AgentId[] = ['execution']
 
 /** Har agent ka latest event dekh ke uska abhi ka state nikalta hai. */
 export function agentStates(events: AgentEvent[], now: number): Record<string, AgentState> {
