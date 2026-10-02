@@ -177,7 +177,7 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
             <div
               className="border px-2 py-1.5"
               style={{ borderColor: 'rgba(0,255,136,0.5)', boxShadow: '0 0 12px rgba(0,255,136,0.15) inset' }}
-              title="What the bot actually does: M15 zone, first touch, ML top 30%, exit brain picks 1:1 or trailing. Unseen years only."
+              title="What the bot actually does: M15 zone, first touch, ML top 30%, value area filter, exit brain picks 1:1 or trailing. Unseen years only."
             >
               <small className="block text-[9px] tracking-wider text-muted">BOT PF ({netTag})</small>
               <b className="font-display text-lg font-medium" style={{ color: 'var(--green)' }}>
@@ -188,6 +188,24 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
               </small>
             </div>
           </div>
+          {report?.va_filter?.on && (
+            <div
+              className="mb-1 text-[10px] text-muted"
+              title="After the ML picks a trade, the bot skips it if the entry is on the expensive side of the last 24h volume profile value area (buy near or above the value area high, sell near or below the value area low). Threshold set from pre-2019 data only."
+            >
+              VALUE AREA FILTER <b className="font-normal" style={{ color: 'var(--green)' }}>ON</b> · skipped{' '}
+              {report.va_filter.removed.toLocaleString()} expensive entries · PF without filter {report.va_filter.pf_without.toFixed(2)}
+            </div>
+          )}
+          {report?.act_filter?.on && (
+            <div
+              className="mb-1 text-[10px] text-muted"
+              title="After the ML (and value area filter) pick a trade, the bot skips it if the market was quieter than usual right before the touch: tick volume of the last 15 min below 0.9x the 24h average. Threshold set from pre-2021 data only."
+            >
+              ACTIVITY FILTER <b className="font-normal" style={{ color: 'var(--green)' }}>ON</b> · skipped{' '}
+              {report.act_filter.removed.toLocaleString()} quiet-market touches · PF without filter {report.act_filter.pf_without.toFixed(2)}
+            </div>
+          )}
           {bot && (
             <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted" title="Bot result per pair (net R, unseen years)">
               {Object.entries(bot.by_symbol).map(([s, v]) => (

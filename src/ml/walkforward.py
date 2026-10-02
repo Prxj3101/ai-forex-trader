@@ -96,8 +96,17 @@ def load(symbols: list[str], commission: float = COMMISSION, slip_pips: float = 
         f = folder / f"{s}_v2.parquet"
         if not f.exists():
             raise SystemExit(f"{f.name} nahi mila. Pehle: python src\\research\\zone_dataset_v2.py --symbol {s}")
-        parts.append(pd.read_parquet(f))
+        part = pd.read_parquet(f)
+        if "r24_va_pos" not in part:                              # purana dataset: volume profile yahin bana lo
+            from src.features.volume_profile import add_vp_features
+            part = add_vp_features(part, s)
+        if "act_15m" not in part:                                 # purana dataset: market activity yahin bana lo
+            from src.features.activity import add_activity
+            part = add_activity(part, s)
+        parts.append(part)
     d = pd.concat(parts, ignore_index=True)
+    d["va_ok"] = config.va_ok(d["r24_va_pos"])                   # value area filter (ML ke BAAD veto rule)
+    d["act_ok"] = config.act_ok(d["act_15m"])                    # activity filter (ML ke BAAD veto rule)
     d["spread_r"] = d["spread_atr"] * d["atr"] / d["risk"]      # spread risk ka kitna hissa
     d["risk_atr"] = d["risk"] / d["atr"]                         # SL kitna bada (ATR mein)
     d = add_costs(d, commission, slip_pips)                      # ab r_trail / r_tp1 / r_tp2 = NET
@@ -167,7 +176,15 @@ def results(wf: pd.DataFrame) -> dict:
                for b, g in wf.groupby("bucket", observed=True)]
 
     # Exit comparison: same trades (M15 pehla touch + ML top 30%), 4 alag exit tarike
-    sel = wf[(wf["zone_tf"] == "M15") & (wf["touch_number"] == 1) & wf["keep_0.3"]].sort_values("fill_time")
+    sel_ml = wf[(wf["zone_tf"] == "M15") & (wf["touch_number"] == 1) & wf["keep_0.3"]].sort_values("fill_time")
+    r_of = lambda x: (pd.Series(np.where(x["exit_ml"] == "trail", x["r_trail"], x["r_tp1"]))  # noqa: E731
+                      if len(x) else pd.Series(dtype=float))
+    sel_va = sel_ml[sel_ml["va_ok"]]       # + VALUE AREA FILTER (config.VA_FILTER; off -> sab True)
+    sel = sel_va[sel_va["act_ok"]]         # + ACTIVITY FILTER (config.ACT_FILTER; off -> sab True)
+    va = dict(on=bool(config.VA_FILTER), max_pos=config.VA_MAX_POS, removed=int(len(sel_ml) - len(sel_va)),
+              pf_without=pf(r_of(sel_ml)), trades_without=int(len(sel_ml)))
+    act = dict(on=bool(config.ACT_FILTER), min_act=config.ACT_MIN, removed=int(len(sel_va) - len(sel)),
+               pf_without=pf(r_of(sel_va)), trades_without=int(len(sel_va)))
     exits = []
     for col, label in (("r_trail", "Always trailing"), ("r_tp1", "Always 1:1"),
                        ("r_rule", "Smart rule (slow approach = 1:1)"), ("r_ml", "ML exit model")):
@@ -181,7 +198,8 @@ def results(wf: pd.DataFrame) -> dict:
     r = sel["r_ml"]
     cum = r.cumsum()
     bot = dict(
-        label="M15 first touch + ML top 30% + exit brain",
+        label="M15 first touch + ML top 30%" + (" + value area filter" if config.VA_FILTER else "")
+              + (" + activity filter" if config.ACT_FILTER else "") + " + exit brain",
         trades=int(len(sel)), win_pct=round(100 * float((r > 0).mean()), 1), pf=pf(r),
         total_r=round(float(r.sum()), 1), avg_r=round(float(r.mean()), 3),
         max_dd_r=round(float((cum.cummax() - cum).max()), 1),
@@ -191,12 +209,13 @@ def results(wf: pd.DataFrame) -> dict:
         by_symbol={str(s): dict(trades=int(len(g)), pf=pf(g["r_ml"]), total_r=round(float(g["r_ml"].sum()), 1))
                    for s, g in sel.groupby("symbol", observed=True)},
     )
-    return dict(summary=rows, by_year=by_year, by_symbol=by_sym, score_buckets=buckets, exits=exits, bot=bot)
+    return dict(summary=rows, by_year=by_year, by_symbol=by_sym, score_buckets=buckets, exits=exits, bot=bot,
+                va_filter=va, act_filter=act)
 
 
 SCORE_COLS = ["symbol", "zone_tf", "direction", "zone_candle_time", "created_at", "touch_number", "fill_time",
               "entry", "sl", "score", "keep_0.5", "keep_0.3", "r_trail", "r_trail_exit",
-              "exit_ml", "r_ml", "r_tp1"]
+              "exit_ml", "r_ml", "r_tp1", "r24_va_pos", "va_ok", "act_15m", "act_ok"]
 
 
 def train(symbols: list[str], first_test_year: int = 2019, log=print,
@@ -222,6 +241,10 @@ def train(symbols: list[str], first_test_year: int = 2019, log=print,
     model.booster_.save_model(str(MODELS / "zone_brain.txt"))
     exit_model = lgb.LGBMRegressor(**EXIT_PARAMS).fit(d[FEATURES], (d["r_trail"] - d["r_tp1"]).clip(-3, 3))
     exit_model.booster_.save_model(str(MODELS / "exit_brain.txt"))
+    # LIVE BOT ke liye: final model ka "top 30% / top 50%" cut-off (walk-forward jaisa: training scores ka quantile)
+    train_scores = model.predict_proba(d[FEATURES])[:, 1]
+    final_thr = {str(k): float(np.quantile(train_scores, 1 - k)) for k in KEEP_TOP if k < 1}
+    res.update(final_thresholds=final_thr)
     res.update(symbols=symbols, features=FEATURES, importance=imp.to_dict(), n_trades=len(d),
                commission=commission, slippage_pips=SLIP_PIPS, results_are="net of costs",
                first_test_year=first_test_year, trained_at=pd.Timestamp.now(tz="UTC").isoformat())

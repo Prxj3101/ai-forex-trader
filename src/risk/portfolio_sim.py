@@ -18,7 +18,11 @@ RISK RULES (RiskConfig):
   max_open          : ek saath max kitne trades
   max_per_symbol    : ek pair pe max kitne
   max_usd_same_side : USD ki ek hi direction mein max kitne (EURUSD buy = USD sell, USDJPY buy = USD buy)
-  daily_loss_pct    : aaj ka realized loss itna ho jaaye toh aaj naya trade nahi (NY din)
+  daily_loss_pct    : aaj ka band hua loss din ke shuru ke balance ka itna % -> aaj naya trade nahi (default 1.5%)
+  daily_risk_budget_pct: aaj ka loss + saare khule SL + naya trade isse zyada -> naya trade nahi (default 2%,
+                      Funding Pips daily limit 3%)
+  house_money_pct   : HOUSE MONEY - risk = 0.25% + is mahine ke profit ka itna % (default 5%, 0 = off)
+  risk_cap_pct      : house money ke saath bhi max risk per trade (default 0.5%)
   brake_dd_pct      : DRAWDOWN BRAKE - account peak se itna % neeche -> risk aadha (default 5%), naye peak pe normal
   kill_dd_pct       : KILL SWITCH - peak se itna % neeche -> naye trades band + alert (default 9%, prop limit 10%)
   commission_per_lot: round-trip commission USD per 1.00 lot (Funding Pips $5, ECN brokers ~$6-7)
@@ -71,7 +75,17 @@ class RiskConfig:
     max_open: int = 3
     max_per_symbol: int = 1
     max_usd_same_side: int = 2
-    daily_loss_pct: float = 3.0
+    # DAILY RULES (Funding Pips daily loss limit = 3%; hum 1% margin rakhte hain):
+    #   daily stop: aaj ka band hua loss >= 1.5% (din ke shuru ke balance ka) -> aaj naya trade nahi
+    #   daily risk budget: aaj ka loss + saare khule trades ke SL + naya trade <= 2% -> warna naya trade nahi
+    #   (saare khule trades ek saath SL pe chale jaayein tab bhi din ka loss 2% se upar nahi jaata)
+    daily_loss_pct: float = 1.5
+    daily_risk_budget_pct: float = 2.0
+    # HOUSE MONEY: profit mein risk badhao, sirf IS MAHINE ke profit se:
+    #   risk = 0.25% + (is mahine ka profit ka house_money_pct %) , max risk_cap_pct. 0 = off.
+    #   naya mahina -> wapas 0.25%. Brake (drawdown) laga ho toh brake jeetta hai.
+    house_money_pct: float = 5.0
+    risk_cap_pct: float = 0.5
     slippage_pips: float = 0.2
     min_lot: float = 0.01
     lot_step: float = 0.01
@@ -111,7 +125,9 @@ def load_candidates(symbols: list[str] | None = None, scores: pd.DataFrame | Non
                                         hi[f0:g1], lo[f0:g1], cl[f0:g1], sp[f0:g1])
             rows.append(dict(symbol=sym, direction=r.direction, fill_time=r.fill_time,
                              exit_time=idx[f0 + k] + pd.Timedelta(minutes=5), entry=r.entry, risk=risk,
-                             exit=r.exit_ml, r=rr, reason=why, score=r.score))
+                             exit=r.exit_ml, r=rr, reason=why, score=r.score,
+                             va_pos=float(getattr(r, "r24_va_pos", np.nan)),
+                             act=float(getattr(r, "act_15m", np.nan))))
     return pd.DataFrame(rows).sort_values("fill_time").reset_index(drop=True)
 
 
@@ -129,6 +145,30 @@ def risk_usd_per_unit(symbol: str, entry: float, risk: float) -> float:
     return risk / entry                 # USDJPY, USDCAD: quote JPY/CAD -> USD mein badlo
 
 
+def trading_day(t: pd.Timestamp):
+    """Broker / prop firm ka din: NY 5 PM pe badalta hai (server midnight = NY + 7h)."""
+    return (t.tz_convert(NY) + pd.Timedelta(hours=7)).date()
+
+
+def trade_risk_pct(cfg: RiskConfig, equity: float, peak: float, month_start: float) -> tuple[float, bool]:
+    """Risk % for the next trade: brake (drawdown) > house money (this month's profit) > normal."""
+    dd = (peak - equity) / peak * 100 if peak > 0 else 0.0
+    if dd >= cfg.brake_dd_pct:
+        return cfg.risk_pct * cfg.brake_factor, True
+    extra = 100 * (cfg.house_money_pct / 100) * max(equity - month_start, 0.0) / equity if equity > 0 else 0.0
+    return min(cfg.risk_pct + extra, max(cfg.risk_cap_pct, cfg.risk_pct)), False
+
+
+def daily_ok(cfg: RiskConfig, day_start: float, day_pnl: float, open_risk_usd: float, new_risk_usd: float) -> str | None:
+    """None = allowed, else reason. day_pnl = today's CLOSED profit/loss; open_risk_usd = sum of open trades' SL loss."""
+    if day_pnl <= -cfg.daily_loss_pct / 100 * day_start:
+        return "daily loss limit"
+    worst = -min(day_pnl, 0.0) + open_risk_usd + new_risk_usd
+    if worst > cfg.daily_risk_budget_pct / 100 * day_start:
+        return "daily risk budget"
+    return None
+
+
 # ----------------------------------------------------------------------
 # 2) Simulation: time ke hisaab se ek ek trade, asli account jaisa
 # ----------------------------------------------------------------------
@@ -142,14 +182,17 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
     closed: list[dict] = []
     skipped: dict[str, int] = {}
     day_pnl: dict = {}
+    day_start: dict = {}               # din ke shuru ka balance (daily rules isi se naapte hain)
+    month = month_start = None         # house money: is mahine ka shuru ka balance
     curve = [(cands["fill_time"].iloc[0] - pd.Timedelta(days=1), equity)]
 
     def close_until(t):
         nonlocal equity, peak
         for p in sorted([p for p in open_pos if p["exit_time"] <= t], key=lambda p: p["exit_time"]):
+            day = trading_day(p["exit_time"])
+            day_start.setdefault(day, equity)
             equity += p["pnl"]
             peak = max(peak, equity)
-            day = p["exit_time"].tz_convert(NY).date()
             day_pnl[day] = day_pnl.get(day, 0.0) + p["pnl"]
             closed.append(p)
             open_pos.remove(p)
@@ -172,8 +215,12 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
         if paused_until is not None and c.fill_time < paused_until:
             skip("kill switch pause")
             continue
-        today = c.fill_time.tz_convert(NY).date()
-        if day_pnl.get(today, 0.0) <= -cfg.daily_loss_pct / 100 * equity:
+        today = trading_day(c.fill_time)
+        day_start.setdefault(today, equity)
+        mkey = c.fill_time.tz_convert(NY).strftime("%Y-%m")
+        if mkey != month:
+            month, month_start = mkey, equity
+        if day_pnl.get(today, 0.0) <= -cfg.daily_loss_pct / 100 * day_start[today]:
             skip("daily loss limit")
             continue
         if len(open_pos) >= cfg.max_open:
@@ -190,9 +237,8 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
             skip("too much USD one way")
             continue
 
-        # DRAWDOWN BRAKE: peak se brake_dd_pct neeche -> risk aadha
-        braked = dd >= cfg.brake_dd_pct
-        risk_pct = cfg.risk_pct * (cfg.brake_factor if braked else 1.0)
+        # RISK: DRAWDOWN BRAKE (peak se 5% neeche -> aadha) > HOUSE MONEY (is mahine ke profit se, max cap) > normal
+        risk_pct, braked = trade_risk_pct(cfg, equity, peak, month_start)
 
         # Lot size: risk amount / (SL pe per-unit nuksaan), 0.01 ke steps mein NEECHE round
         per_unit = risk_usd_per_unit(c.symbol, c.entry, c.risk)
@@ -202,6 +248,12 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
             skip("lot below 0.01 (account too small)")
             continue
         risk_usd = lots * LOT * per_unit
+        why = daily_ok(cfg, day_start[today], day_pnl.get(today, 0.0),
+                       sum(p["risk_usd"] + cfg.commission_per_lot * p["lots"] for p in open_pos),
+                       risk_usd + cfg.commission_per_lot * lots)
+        if why:
+            skip(why)
+            continue
         slip_usd = 0.0
         if c.reason in ("sl", "trail", "be"):
             slip_price = cfg.slippage_pips * PIP[c.symbol]
@@ -209,10 +261,15 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
         pnl = c.r * risk_usd - cfg.commission_per_lot * lots - slip_usd
         open_pos.append(dict(symbol=c.symbol, direction=c.direction, usd_side=side, fill_time=c.fill_time,
                              exit_time=c.exit_time, lots=round(float(lots), 2), risk_usd=risk_usd,
-                             r=c.r, pnl=pnl, exit=c.exit, reason=c.reason, braked=braked))
+                             r=c.r, pnl=pnl, exit=c.exit, reason=c.reason, braked=braked, risk_pct=risk_pct))
     close_until(pd.Timestamp.max.tz_localize("UTC"))
     res = report(closed, curve, skipped, cfg, len(cands))
+    dl = [day_pnl[d] / day_start[d] * 100 for d in day_pnl if day_start.get(d)]
+    res["worst_day_pct"] = round(float(min(dl)), 2) if dl else None      # broker trading day (NY 5 PM se NY 5 PM)
     res["braked_trades_pct"] = round(100 * float(np.mean([p["braked"] for p in closed])), 1) if closed else 0.0
+    rp = [p["risk_pct"] for p in closed]
+    res["risk_used"] = dict(avg_pct=round(float(np.mean(rp)), 3), max_pct=round(float(np.max(rp)), 3),
+                            boosted_trades_pct=round(100 * float(np.mean([r > cfg.risk_pct + 1e-9 for r in rp])), 1)) if rp else None
     res["kill_switch_events"] = kill_events
     return res
 
@@ -264,12 +321,40 @@ def report(closed: list[dict], curve: list, skipped: dict, cfg: RiskConfig, n_ca
 
 
 def run(capital: float = 1000, risk_pct: float = 0.25, commission: float = 5.0, min_sl_pips: float = 0.0,
-        symbols=None, cands=None) -> dict:
+        symbols=None, cands=None, profile_name: str | None = None, guard=None, log=print) -> dict:
+    """profile_name: config.ACCOUNT_PROFILES key (None = config.ACCOUNT_PROFILE).
+    Prop profiles apply the news rules (src/risk/news_rules.py) before the simulation."""
+    from src import config
+    from src.risk.news_rules import load_guard
+
     cfg = RiskConfig(capital=capital, risk_pct=risk_pct, commission_per_lot=commission, min_sl_pips=min_sl_pips)
     cands = load_candidates(symbols) if cands is None else cands
     if symbols:
         cands = cands[cands["symbol"].isin(symbols)].reset_index(drop=True)
-    return simulate(cands, cfg)
+    # VALUE AREA FILTER (config.VA_FILTER): ML ke baad "mehengi" entries skip
+    va_removed = 0
+    if "va_pos" in cands:
+        keep = config.va_ok(cands["va_pos"])
+        va_removed = int((~keep).sum())
+        cands = cands[keep].reset_index(drop=True)
+    # ACTIVITY FILTER (config.ACT_FILTER): touch ke waqt market shaant -> skip
+    act_removed = 0
+    if "act" in cands:
+        keep = config.act_ok(cands["act"])
+        act_removed = int((~keep).sum())
+        cands = cands[keep].reset_index(drop=True)
+    prof = config.profile(profile_name)
+    news_stats = dict(profile=prof["name"], news_rules=False, news_block=False)
+    if prof.get("news_rules") or config.NEWS_BLOCK:
+        guard = guard or load_guard(prof["name"], log=log)
+        cands, news_stats = guard.apply_backtest(cands, log=log)
+    res = simulate(cands, cfg)
+    res["va_filter"] = dict(on=bool(config.VA_FILTER), max_pos=config.VA_MAX_POS, skipped=va_removed)
+    res["act_filter"] = dict(on=bool(config.ACT_FILTER), min_act=config.ACT_MIN, skipped=act_removed)
+    res["account_profile"] = dict(name=prof["name"], label=prof["label"], **news_stats,
+                                  **{k: prof[k] for k in ("news_before_min", "news_after_min", "speech_before_min",
+                                                          "speech_after_min", "exempt_hours", "pre_news") if k in prof})
+    return res
 
 
 def save(res: dict) -> Path:
@@ -285,11 +370,13 @@ def main() -> None:
     ap.add_argument("--risk", type=float, default=0.25, help="risk per trade, %% of equity")
     ap.add_argument("--commission", type=float, default=5.0, help="USD per 1.00 lot round trip")
     ap.add_argument("--min-sl", type=float, default=0.0, help="skip trades with SL smaller than this (pips)")
+    ap.add_argument("--profile", default=None, help="account profile: prop_master / prop_evaluation / real_broker "
+                                                   "(default = config.ACCOUNT_PROFILE)")
     a = ap.parse_args()
 
     print("Loading ML-selected trades (out-of-sample) and replaying exits on M5...")
     cands = load_candidates()
-    res = run(a.capital, a.risk, a.commission, a.min_sl, cands=cands)
+    res = run(a.capital, a.risk, a.commission, a.min_sl, cands=cands, profile_name=a.profile)
     show = {k: v for k, v in res.items() if k not in ("equity_curve", "config")}
     print(json.dumps(show, indent=2, default=str))
     save(res)

@@ -47,6 +47,8 @@ from src import config  # noqa: E402
 from src.features.smc import atr, find_orderflow_zones, find_swings, structure_breaks, track_zones  # noqa: E402
 from src.research.management import POLICIES, run_trade  # noqa: E402
 from src.research.zone_dataset import OUT, add_features, load, session_of  # noqa: E402
+from src.features.volume_profile import add_vp_features  # noqa: E402
+from src.features.activity import add_activity  # noqa: E402
 
 NY = "America/New_York"
 SL_BUFFER_ATR = 0.1
@@ -110,7 +112,10 @@ def zone_context(z: pd.DataFrame, df: pd.DataFrame, h4: pd.DataFrame, d1: pd.Dat
     trend_tf = SwingTrend(df, 2)
     trend_h1 = SwingTrend(h1, 2)
     d1_atr = atr(d1).to_numpy()
-    bars_6h = int(round(6 * 60 / ((idx[1] - idx[0]).total_seconds() / 60)))
+    # candle ka size = AAM gap (median), pehli do candles ka gap nahi (weekend pe shuru ho toh galat aata tha;
+    # live replay check, 2 Oct 2026). Backtest ke numbers same rehte hain (wahan bhi 15 min hi tha).
+    step_min = pd.Series(idx[:500]).diff().median().total_seconds() / 60
+    bars_6h = int(round(6 * 60 / step_min))
     bars_24h = 4 * bars_6h
 
     def last_closed(htf, t):
@@ -339,6 +344,10 @@ def build(symbol: str, swing_n: int | None = None, min_disp: float | None = None
     ds = pd.concat(parts, ignore_index=True).sort_values("fill_time").reset_index(drop=True)
     ds["symbol"], ds["swing_n"], ds["min_disp"], ds["entry_mode"] = symbol, swing_n, min_disp, entry_mode
     ds["win"] = ds["r_trail"] > 0
+    # Volume profile features (value area filter ke liye; src/features/volume_profile.py)
+    ds = add_vp_features(ds, symbol, m5)
+    # Market activity at the touch (activity filter; src/features/activity.py)
+    ds = add_activity(ds, symbol, m5)
     say("zone", f"{symbol}: dataset v2 ready, {len(ds):,} trades in {time.time() - t0:.0f}s", 100)
     return ds
 

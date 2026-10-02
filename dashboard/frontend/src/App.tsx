@@ -4,6 +4,7 @@ import AgentsPanel from './components/AgentsPanel'
 import Boot from './components/Boot'
 import ChartPanel, { type ChartSettings } from './components/ChartPanel'
 import Header from './components/Header'
+import LivePanel from './components/LivePanel'
 import MLBrain from './components/MLBrain'
 import Pipeline from './components/Pipeline'
 import ResearchPanel from './components/ResearchPanel'
@@ -144,6 +145,8 @@ export default function App() {
           <ChartPanel symbols={symbols} settings={settings} onChange={onSettings} onLog={onLog} mlKey={mlKey} botDisp={botDisp} />
           <MLBrain report={mlReport} training={mlTraining} onTrain={onTrain} connected={connected} />
         </div>
+
+        <LivePanel connected={connected} />
 
         <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.3fr)_280px_minmax(0,1fr)]">
           <TradeLog events={events} />

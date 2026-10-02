@@ -40,6 +40,7 @@ from src.features.smc import atr, find_orderflow_zones, track_zones  # noqa: E40
 DATA = ROOT / "data" / "processed"
 OUT = ROOT / "data" / "research"
 NY = "America/New_York"
+H1_ZONE_LIFE = 500     # H1 zone kitni H1 candles tak "zinda" gina jaye (track_zones ka max_bars bhi 500)
 
 RR = 2.0
 SL_BUFFER_ATR = 0.1
@@ -105,10 +106,15 @@ def add_features(z: pd.DataFrame, df: pd.DataFrame, h1: pd.DataFrame, h4: pd.Dat
         k = h1_bos["created_at"].searchsorted(r.created_at, side="right") - 1
         h1_flow = h1_bos["direction"].iloc[k] if k >= 0 else "none"
 
-        # HTF confluence: koi H1 zone same direction ka, jo abhi zinda hai aur price range overlap karta hai
+        # HTF confluence: koi H1 zone same direction ka, jo abhi zinda hai aur price range overlap karta hai.
+        # FIX (2 Oct 2026, live replay check): sirf pichle H1_ZONE_LIFE H1 candles mein bane zones.
+        # Pehle 2017 ke purane zones bhi "zinda" gine jaate the (track_zones sirf 500 candles dekhta hai,
+        # uske baad invalidated_time NaN = hamesha zinda). Live bot ke paas itna purana data hota hi nahi.
+        h1_from = h1.index[max(i1 - H1_ZONE_LIFE, 0)] if i1 >= 0 else r.created_at
         cand = h1_zones[
             (h1_zones["direction"] == r.direction)
             & (h1_zones["created_at"] <= r.created_at)
+            & (h1_zones["created_at"] >= h1_from)
             & ((h1_zones["invalidated_time"].isna()) | (h1_zones["invalidated_time"] > r.created_at))
             & (h1_zones["bottom"] <= r.top) & (h1_zones["top"] >= r.bottom)
         ]

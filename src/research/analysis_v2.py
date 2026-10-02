@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src import config
 from src.ml import walkforward
 
 RESEARCH = Path(__file__).resolve().parents[2] / "data" / "research"
@@ -87,7 +88,8 @@ def _breakdown(d: pd.DataFrame, r: pd.Series, col: str, order: list | None = Non
 def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = True, first_touch: bool = True,
            min_disp_h1: float = 0, sessions: list[str] | None = None, killzones: list[str] | None = None,
            fvg_only: bool = False, confluence_only: bool = False, direction: str = "both",
-           commission: float = walkforward.COMMISSION) -> dict | None:
+           commission: float = walkforward.COMMISSION, va_filter: bool = False,
+           act_filter: bool = False) -> dict | None:
     d = _load(symbol, commission)
     if d is None:
         return None
@@ -103,6 +105,10 @@ def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = T
     m = pd.Series(True, index=d.index)
     if ml_only:
         m &= d["keep_0.3"].astype(bool)
+    if va_filter:                                         # value area filter: "mehengi" entries skip
+        m &= d["va_ok"].astype(bool)
+    if act_filter:                                        # activity filter: shaant market mein touch skip
+        m &= d["act_ok"].astype(bool)
     if first_touch:
         m &= d["touch_number"] == 1
     m &= d["disp_h1"].fillna(0) >= min_disp_h1
@@ -125,7 +131,8 @@ def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = T
                      "exit": exit_, "exit_label": EXITS[exit_], "commission": commission,
                      "slippage_pips": walkforward.SLIP_PIPS, "net": True,
                      "period": f"{d['year'].min()}-{d['year'].max()}" if len(d) else "no ML scores for this pair",
-                     "ml_period_only": ml_needed},
+                     "ml_period_only": ml_needed, "va_filter": va_filter,
+                     "va_max_pos": config.VA_MAX_POS, "act_filter": act_filter, "act_min": config.ACT_MIN},
         "break_even_win_pct": BREAK_EVEN.get(exit_),
         "all": _stats(r_all), "filtered": _stats(r_f),
         "equity_all": _equity(d, r_all), "equity_filtered": _equity(f, r_f),

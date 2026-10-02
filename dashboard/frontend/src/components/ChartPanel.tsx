@@ -38,8 +38,14 @@ type Props = {
 
 const TFS = ['M5', 'M15', 'H1', 'H4', 'D1']
 
-// ML score -> marker color: green = model ke top 30% (bot lega), amber = top 50%, red = skip
-const scoreColor = (s: MLScore) => (s.keep_top30 ? '#00ff88' : s.keep_top50 ? '#ffc400' : '#ff2e63')
+// ML score -> marker color: green = bot lega (top 30% + value area OK + market active),
+// grey = top 30% lekin entry mehengi (VA filter skip), blue-grey = top 30% lekin market shaant (activity filter skip),
+// amber = top 50%, red = skip
+const vaSkip = (s: MLScore) => s.keep_top30 && s.va_ok === false
+const quietSkip = (s: MLScore) => s.keep_top30 && s.va_ok !== false && s.act_ok === false
+const isTake = (s: MLScore) => s.keep_top30 && s.va_ok !== false && s.act_ok !== false
+const scoreColor = (s: MLScore) =>
+  vaSkip(s) ? '#8a94a6' : quietSkip(s) ? '#5c7c99' : s.keep_top30 ? '#00ff88' : s.keep_top50 ? '#ffc400' : '#ff2e63'
 
 /** ML scores ko chart markers mein badlo. Fill time M5 ka hai -> us TF ki candle pe snap karo. */
 function toMarkers(scores: MLScore[], times: number[]): SeriesMarker<Time>[] {
@@ -63,7 +69,7 @@ function toMarkers(scores: MLScore[], times: number[]): SeriesMarker<Time>[] {
       shape: bull ? 'arrowUp' : 'arrowDown',
       color: scoreColor(s),
       text: `${Math.round(s.score * 100)}%${s.touch_number > 1 ? ` T${s.touch_number}` : ''}${
-        s.keep_top30 && s.exit_ml ? (s.exit_ml === 'trail' ? ' TRAIL' : ' 1:1') : ''
+        vaSkip(s) ? ' VA SKIP' : quietSkip(s) ? ' QUIET' : isTake(s) && s.exit_ml ? (s.exit_ml === 'trail' ? ' TRAIL' : ' 1:1') : ''
       }`,
     })
   }
@@ -192,7 +198,7 @@ export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, 
         const bull = zs.filter((z) => z.direction === 'bull').length
         onLog(`${zs.length} orderflow zones in view (${bull} demand, ${zs.length - bull} supply)`, 'zone', 'done')
         if (sc.length) {
-          const take = sc.filter((s) => s.keep_top30).length
+          const take = sc.filter(isTake).length
           onLog(`${sc.length} trades scored, ${take} in top 30% (would be taken)`, 'ml', 'done')
         }
       })
@@ -305,6 +311,8 @@ export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, 
       <div className="mt-1 flex flex-wrap gap-4 text-[10px] text-muted" title="Scores come from walk-forward testing: the model never saw that year during training. Available for M15/H1 from 2019, only for zones found with the BOT SETTING of this pair.">
         <span>ML arrows at fill:</span>
         <span style={{ color: '#00ff88' }}>▲ top 30% (take)</span>
+        <span style={{ color: '#8a94a6' }} title="ML liked it, but the entry was on the expensive side of the last 24h value area, so the bot skips it">▲ VA SKIP (entry too expensive)</span>
+        <span style={{ color: '#5c7c99' }} title="ML liked it, but the market was quieter than usual right before the touch (last 15 min tick volume below 0.9x the 24h average), so the bot skips it">▲ QUIET (market inactive)</span>
         <span style={{ color: '#ffc400' }}>▲ top 50%</span>
         <span style={{ color: '#ff2e63' }}>▲ low score (skip)</span>
         <span>T2/T3 = 2nd/3rd touch · 1:1 / TRAIL = exit chosen by ML · out-of-sample scores</span>

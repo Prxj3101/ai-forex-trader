@@ -1,0 +1,5 @@
+cd dashboard\frontend
+pnpm run dev
+
+.venv\Scripts\activate.bat
+uvicorn src.api.server:app --reload

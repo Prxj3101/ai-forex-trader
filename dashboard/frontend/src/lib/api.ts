@@ -130,6 +130,8 @@ export type MLReport = {
   commission: number | null
   slippage_pips: number | null
   net: boolean
+  va_filter?: { on: boolean; max_pos: number; removed: number; pf_without: number; trades_without: number } | null
+  act_filter?: { on: boolean; min_act: number; removed: number; pf_without: number; trades_without: number } | null
 }
 
 export type RiskReport = {
@@ -143,9 +145,34 @@ export type RiskReport = {
     brake_dd_pct?: number
     brake_factor?: number
     kill_dd_pct?: number
+    daily_risk_budget_pct?: number
+    house_money_pct?: number
+    risk_cap_pct?: number
   }
   braked_trades_pct?: number
+  worst_day_pct?: number | null
+  risk_used?: { avg_pct: number; max_pct: number; boosted_trades_pct: number } | null
   kill_switch_events?: { time: string; drawdown_pct: number }[]
+  va_filter?: { on: boolean; max_pos: number; skipped: number }
+  act_filter?: { on: boolean; min_act: number; skipped: number }
+  account_profile?: {
+    name: string
+    label: string
+    news_rules: boolean
+    news_block?: boolean
+    block_before_min?: number
+    block_after_min?: number
+    blocked_fills?: number
+    closed_before_news?: number
+    profit_removed?: number
+    calendar_end?: string | null
+    news_before_min?: number
+    news_after_min?: number
+    speech_before_min?: number
+    speech_after_min?: number
+    exempt_hours?: number
+    pre_news?: 'close' | 'hold'
+  }
   start: string
   end: string
   years: number
@@ -183,6 +210,10 @@ export type MLScore = {
   exit: string
   exit_ml: 'tp1' | 'trail' | null
   r_ml: number | null
+  va_ok?: boolean
+  va_pos?: number | null
+  act_ok?: boolean
+  act?: number | null
 }
 
 export type ResearchExit = 'tp1' | 'tp2' | 'trail' | 'brain'
@@ -198,6 +229,8 @@ export type ResearchV2Filters = {
   fvg_only: boolean
   confluence_only: boolean
   direction: 'both' | 'bull' | 'bear'
+  va_filter: boolean
+  act_filter: boolean
 }
 
 export type ResearchV2Report = {
@@ -213,6 +246,10 @@ export type ResearchV2Report = {
     net: boolean
     period: string
     ml_period_only: boolean
+    va_filter?: boolean
+    va_max_pos?: number
+    act_filter?: boolean
+    act_min?: number
   }
   break_even_win_pct: number | null
   all: Stats
@@ -252,6 +289,78 @@ async function request<T>(path: string, params: Params = {}, method = 'GET'): Pr
   return res.json() as Promise<T>
 }
 
+
+export type LiveTrade = {
+  symbol: string
+  direction: 'bull' | 'bear'
+  fill_ts: number | null
+  exit_ts: number | null
+  entry: number
+  exit: 'tp1' | 'trail'
+  exit_reason: string
+  r: number
+  lots: number
+  pnl: number
+}
+
+export type LiveOpenTrade = {
+  symbol: string
+  direction: 'bull' | 'bear'
+  entry: number
+  sl: number
+  sl_pips: number
+  lots: number
+  risk_usd: number
+  risk_pct: number | null
+  exit: 'tp1' | 'trail'
+  score: number
+  r_now: number | null
+  fill_time: number | null
+}
+
+export type LiveDecision = {
+  bar_ts: number | null
+  symbol: string
+  direction: 'bull' | 'bear'
+  entry: number
+  score: number
+  decision: string
+  reason: string | null
+  lots: number | null
+  exit: string | null
+}
+
+export type LiveWhatIf = { decision: string; zones: number; win_pct: number; net_brain: number; net_tp1: number; net_trail: number }
+
+export type LiveStatus = {
+  status: 'running' | 'stopped' | 'none'
+  updated?: number | null
+  age_sec?: number | null
+  full_state?: boolean
+  account?: {
+    capital: number
+    equity: number
+    peak: number
+    dd_pct: number
+    total_pct: number
+    today_pnl: number
+    month_pnl: number
+    kill: boolean
+    braked: boolean
+    risk_now_pct: number
+    brake_dd_pct: number
+    kill_dd_pct: number
+    daily_loss_pct: number
+    daily_budget_pct: number
+  }
+  open_trades?: LiveOpenTrade[]
+  closed?: { count: number; wins: number; win_pct: number | null; pnl: number; r_sum: number; pf: number | null }
+  curve?: { time: number; value: number }[]
+  trades?: LiveTrade[]
+  decisions?: LiveDecision[]
+  whatif?: LiveWhatIf[]
+}
+
 export const api = {
   health: () => request<{ status: string }>('/api/health'),
   symbols: () => request<Record<string, string[]>>('/api/symbols'),
@@ -277,6 +386,7 @@ export const api = {
   mlScores: (p: { symbol: string; tf: string; start?: string; end?: string }) => request<MLScore[]>('/api/ml/scores', p),
   riskReport: () => request<RiskReport>('/api/risk/report'),
   config: () => request<BotConfig>('/api/config'),
+  live: () => request<LiveStatus>('/api/live'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>
     request<ResearchV2Report>('/api/research/v2/report', {
@@ -291,5 +401,7 @@ export const api = {
       fvg_only: String(f.fvg_only),
       confluence_only: String(f.confluence_only),
       direction: f.direction,
+      va_filter: String(f.va_filter),
+      act_filter: String(f.act_filter),
     }),
 }

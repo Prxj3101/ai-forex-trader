@@ -125,8 +125,10 @@ def health():
 def bot_config():
     """Bot ki settings (src/config.py): har pair ka displacement, core pairs."""
     from src import config
+    p = config.profile()
     return {"swing_n": config.SWING_N, "core_symbols": config.CORE_SYMBOLS,
-            "disp_by_symbol": config.DISP_BY_SYMBOL, "default_disp": config.DEFAULT_DISP}
+            "disp_by_symbol": config.DISP_BY_SYMBOL, "default_disp": config.DEFAULT_DISP,
+            "account_profile": {k: (list(v) if isinstance(v, tuple) else v) for k, v in p.items()}}
 
 
 @app.get("/api/symbols")
@@ -299,7 +301,8 @@ def research_v2_build(symbol: str = "USDJPY"):
 @app.get("/api/research/v2/report")
 def research_v2_report(symbol: str = "USDJPY", tf: str = "M15", exit: str = "brain", ml_only: bool = True,
                        first_touch: bool = True, min_disp_h1: float = 0, sessions: str = "", killzones: str = "",
-                       fvg_only: bool = False, confluence_only: bool = False, direction: str = "both"):
+                       fvg_only: bool = False, confluence_only: bool = False, direction: str = "both",
+                       va_filter: bool = False, act_filter: bool = False):
     from src.research import analysis_v2
 
     if exit not in analysis_v2.EXITS:
@@ -307,7 +310,8 @@ def research_v2_report(symbol: str = "USDJPY", tf: str = "M15", exit: str = "bra
     rep = analysis_v2.report(
         symbol, tf, exit_=exit, ml_only=ml_only, first_touch=first_touch, min_disp_h1=min_disp_h1,
         sessions=[s for s in sessions.split(",") if s], killzones=[k for k in killzones.split(",") if k],
-        fvg_only=fvg_only, confluence_only=confluence_only, direction=direction,
+        fvg_only=fvg_only, confluence_only=confluence_only, direction=direction, va_filter=va_filter,
+        act_filter=act_filter,
     )
     if rep is None:
         raise HTTPException(404, f"No dataset v2 for {symbol}. Build it first.")
@@ -345,7 +349,8 @@ def run_ml_train(symbols: list[str]) -> None:
         # Risk Agent: naye ML ke trades pe realistic account simulation
         from src.risk import portfolio_sim
         bus.emit("risk", f"Simulating ${SIM_CAPITAL:,.0f} account ({SIM_RISK}% risk, ${walkforward.COMMISSION:g}/lot)", progress=30)
-        sim = portfolio_sim.run(SIM_CAPITAL, SIM_RISK, walkforward.COMMISSION)
+        sim = portfolio_sim.run(SIM_CAPITAL, SIM_RISK, walkforward.COMMISSION,
+                                log=lambda m: bus.emit("risk", m.strip(), progress=60))
         portfolio_sim.save(sim)
         bus.emit("risk", f"Account sim: {sim['cagr_pct']}%/yr, max drawdown {sim['max_drawdown_pct']}%, "
                          f"{sim['trades_per_month']} trades/month", status="done", progress=100)
@@ -388,6 +393,8 @@ def ml_report():
         "importance": [{"feature": k, "pct": v} for k, v in imp],
         "exits": r.get("exits", []),
         "bot": r.get("bot"),
+        "va_filter": r.get("va_filter"),
+        "act_filter": r.get("act_filter"),
         "commission": r.get("commission"),
         "slippage_pips": r.get("slippage_pips"),
         "net": r.get("results_are") == "net of costs",
@@ -425,9 +432,132 @@ def ml_scores(symbol: str, tf: str = "M15", start: str | None = None, end: str |
          "direction": r.direction, "touch_number": int(r.touch_number), "entry": clean(r.entry), "sl": clean(r.sl),
          "score": round(float(r.score), 3), "keep_top30": bool(r.keep_0_3), "keep_top50": bool(r.keep_0_5),
          "r_trail": clean(r.r_trail), "exit": r.r_trail_exit,
-         "exit_ml": getattr(r, "exit_ml", None), "r_ml": clean(getattr(r, "r_ml", np.nan))}
+         "exit_ml": getattr(r, "exit_ml", None), "r_ml": clean(getattr(r, "r_ml", np.nan)),
+         "va_ok": bool(getattr(r, "va_ok", True)), "va_pos": clean(getattr(r, "r24_va_pos", np.nan)),
+         "act_ok": bool(getattr(r, "act_ok", True)), "act": clean(getattr(r, "act_15m", np.nan))}
         for r in s.rename(columns={"keep_0.3": "keep_0_3", "keep_0.5": "keep_0_5"}).itertuples(index=False)
     ]
+
+
+# ----------------------------------------------------------------------
+# LIVE SHADOW BOT: data/live files (src/live/shadow.py likhta hai), dashboard sirf padhta hai
+# ----------------------------------------------------------------------
+LIVE = ROOT / "data" / "live"
+
+
+def _tail_csv(f: Path, n: int, max_bytes: int = 400_000) -> pd.DataFrame:
+    """Badi CSV ka sirf aakhri hissa padho (har 15 s poll pe poori file nahi)."""
+    if not f.exists():
+        return pd.DataFrame()
+    import io
+    with f.open("rb") as fh:
+        header = fh.readline().decode("utf-8", "ignore")
+        fh.seek(0, 2)
+        size = fh.tell()
+        start = max(len(header), size - max_bytes)
+        fh.seek(start)
+        chunk = fh.read().decode("utf-8", "ignore")
+    if start > len(header):
+        chunk = chunk.split("\n", 1)[1] if "\n" in chunk else ""
+    try:
+        d = pd.read_csv(io.StringIO(header + chunk))
+    except Exception:  # noqa: BLE001 - adhi likhi line etc.
+        return pd.DataFrame()
+    return d.tail(n)
+
+
+def _clean_rows(d: pd.DataFrame) -> list[dict]:
+    return [{k: clean(v) for k, v in r.items()} for r in d.to_dict("records")]
+
+
+def _pf(x: pd.Series):
+    gl = -x[x < 0].sum()
+    return round(float(x[x > 0].sum() / gl), 2) if gl > 0 else None
+
+
+@app.get("/api/live")
+def live_status(decisions: int = 40, trades: int = 30):
+    """Shadow bot ka live hisaab: account, khule trades, band trades, decisions, what-if summary."""
+    from src.risk.portfolio_sim import RiskConfig, trade_risk_pct, trading_day
+
+    out: dict = {"status": "none"}
+    sf = LIVE / "shadow_state.json"
+    if not sf.exists():
+        return out
+    try:
+        st = json.loads(sf.read_text())
+    except Exception:  # noqa: BLE001 - file likhi ja rahi ho
+        return out
+    now = pd.Timestamp.now(tz="UTC")
+    updated = pd.Timestamp(st.get("updated")) if st.get("updated") else None
+    age = (now - updated).total_seconds() if updated is not None else None
+    out["status"] = "running" if age is not None and age <= 600 else "stopped"
+    out["updated"] = to_unix(updated) if updated is not None else None
+    out["age_sec"] = round(age) if age is not None else None
+    out["full_state"] = st.get("version") == 2
+
+    cfg = RiskConfig(**{k: v for k, v in (st.get("risk") or {}).items() if k in RiskConfig.__dataclass_fields__})
+    equity, peak = float(st.get("equity", cfg.capital)), float(st.get("peak", cfg.capital))
+    month_start = float(st.get("month_start", equity))
+    risk_now, braked = trade_risk_pct(cfg, equity, peak, month_start)
+    today = str(trading_day(now))
+    out["account"] = dict(
+        capital=cfg.capital, equity=round(equity, 2), peak=round(peak, 2),
+        dd_pct=round((peak - equity) / peak * 100, 2) if peak else 0.0,
+        total_pct=round((equity / cfg.capital - 1) * 100, 2),
+        today_pnl=round(float((st.get("day_pnl") or {}).get(today, 0.0)), 2),
+        month_pnl=round(equity - month_start, 2), kill=bool(st.get("kill")), braked=bool(braked),
+        risk_now_pct=round(risk_now, 3), brake_dd_pct=cfg.brake_dd_pct, kill_dd_pct=cfg.kill_dd_pct,
+        daily_loss_pct=cfg.daily_loss_pct, daily_budget_pct=cfg.daily_risk_budget_pct,
+    )
+    out["open_trades"] = [
+        {k: clean(t.get(k)) if not isinstance(t.get(k), str) else t.get(k)
+         for k in ("symbol", "direction", "entry", "sl", "sl_pips", "lots", "risk_usd", "risk_pct", "exit", "score", "r_now")}
+        | {"fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
+        for t in st.get("open_trades", [])
+    ]
+
+    ct = LIVE / "closed_trades.csv"
+    if ct.exists():
+        c = pd.read_csv(ct)
+        pnl = c["pnl"].astype(float) if "pnl" in c else pd.Series(dtype=float)
+        r = c["r"].astype(float) if "r" in c else pd.Series(dtype=float)
+        out["closed"] = dict(count=int(len(c)), wins=int((pnl > 0).sum()),
+                             win_pct=round(float((pnl > 0).mean() * 100), 1) if len(c) else None,
+                             pnl=round(float(pnl.sum()), 2), r_sum=round(float(r.sum()), 2), pf=_pf(pnl))
+        c = c.assign(exit_ts=[to_unix(pd.Timestamp(x)) for x in c["exit_time"]],
+                     fill_ts=[to_unix(pd.Timestamp(x)) for x in c["fill_time"]])
+        eq = cfg.capital + pnl.cumsum()
+        out["curve"] = [{"time": int(t), "value": round(float(v), 2)} for t, v in zip(c["exit_ts"], eq) if t]
+        cols = [k for k in ("symbol", "direction", "fill_ts", "exit_ts", "entry", "exit", "exit_reason", "r", "lots", "pnl")
+                if k in c]
+        out["trades"] = _clean_rows(c[cols].tail(trades).iloc[::-1])
+    else:
+        out["closed"] = dict(count=0, wins=0, win_pct=None, pnl=0.0, r_sum=0.0, pf=None)
+        out["curve"], out["trades"] = [], []
+
+    d = _tail_csv(LIVE / "decisions.csv", decisions)
+    if len(d):
+        d = d.assign(bar_ts=[to_unix(pd.Timestamp(x)) for x in d["bar_time"]])
+        cols = [k for k in ("bar_ts", "symbol", "direction", "entry", "score", "decision", "reason", "lots", "exit")
+                if k in d]
+        out["decisions"] = _clean_rows(d[cols].iloc[::-1])
+    else:
+        out["decisions"] = []
+
+    wf = LIVE / "whatif.csv"
+    if wf.exists():
+        w = pd.read_csv(wf)
+        rows = []
+        for lab, g in w.groupby("decision"):
+            rows.append(dict(decision=lab, zones=int(len(g)),
+                             win_pct=round(float((g["net_brain"] > 0).mean() * 100), 1),
+                             net_brain=round(float(g["net_brain"].sum()), 2), net_tp1=round(float(g["net_tp1"].sum()), 2),
+                             net_trail=round(float(g["net_trail"].sum()), 2)))
+        out["whatif"] = sorted(rows, key=lambda x: -x["zones"])
+    else:
+        out["whatif"] = []
+    return out
 
 
 # ----------------------------------------------------------------------

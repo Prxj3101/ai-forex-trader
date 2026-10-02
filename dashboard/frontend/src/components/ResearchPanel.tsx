@@ -23,9 +23,10 @@ const EXITS: [ResearchExit, string, string][] = [
 ]
 const BOT_FILTERS: ResearchV2Filters = {
   tf: 'M15', exit: 'brain', ml_only: true, first_touch: true, min_disp_h1: 0,
-  sessions: [], killzones: [], fvg_only: false, confluence_only: false, direction: 'both',
+  sessions: [], killzones: [], fvg_only: false, confluence_only: false, direction: 'both', va_filter: true,
+  act_filter: true,
 }
-const NO_FILTERS: ResearchV2Filters = { ...BOT_FILTERS, ml_only: false, first_touch: false, exit: 'trail' }
+const NO_FILTERS: ResearchV2Filters = { ...BOT_FILTERS, ml_only: false, first_touch: false, exit: 'trail', va_filter: false, act_filter: false }
 
 type Props = { symbols: Record<string, string[]>; defaultSymbol: string; refreshKey: number; building: boolean; coreSymbols: string[] }
 
@@ -192,7 +193,7 @@ export default function ResearchPanel({ symbols, defaultSymbol, refreshKey, buil
           {buildError && <div style={{ color: 'var(--red)' }}>{buildError}</div>}
 
           <div className="flex gap-1">
-            <button className={`chip ${isBot ? 'on' : ''}`} onClick={() => setFilters(BOT_FILTERS)} title="Exactly what the bot does: M15, first touch, ML top 30%, exit brain">
+            <button className={`chip ${isBot ? 'on' : ''}`} onClick={() => setFilters(BOT_FILTERS)} title="Exactly what the bot does: M15, first touch, ML top 30%, value area filter, activity filter, exit brain">
               BOT SETTINGS
             </button>
             <button className="chip" onClick={() => setFilters(NO_FILTERS)} title="Every zone, every touch, trailing exit, no ML">NO FILTERS</button>
@@ -210,6 +211,8 @@ export default function ResearchPanel({ symbols, defaultSymbol, refreshKey, buil
           <div className="flex flex-wrap gap-1">
             <button className={`chip ${filters.ml_only ? 'on' : ''}`} onClick={() => set('ml_only', !filters.ml_only)} title="Only trades the ML scored in its top 30% (out-of-sample, 2019+)">ML TOP 30%</button>
             <button className={`chip ${filters.first_touch ? 'on' : ''}`} onClick={() => set('first_touch', !filters.first_touch)} title="Only the first touch of each zone (2nd/3rd touches are weaker on average)">FIRST TOUCH ONLY</button>
+            <button className={`chip ${filters.va_filter ? 'on' : ''}`} onClick={() => set('va_filter', !filters.va_filter)} title="Skip entries on the expensive side of the last 24h volume profile value area (buy near or above the value area high, sell near or below the value area low)">VALUE AREA FILTER</button>
+            <button className={`chip ${filters.act_filter ? 'on' : ''}`} onClick={() => set('act_filter', !filters.act_filter)} title="Skip touches when the market is quieter than usual: tick volume of the last 15 min before the fill below 0.9x the 24h average">ACTIVITY FILTER</button>
           </div>
 
           <div className="mt-1 text-[10px] tracking-[2px] text-muted">FILTERS (WHAT IF)</div>
