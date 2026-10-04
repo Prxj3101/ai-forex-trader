@@ -37,7 +37,7 @@ def fetch(force: bool = False, log=print) -> list[dict]:
         return json.loads(CACHE.read_text())
     try:
         req = urllib.request.Request(URL, headers={"User-Agent": "ai-forex-trader/1.0"})
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as r:
             items = json.loads(r.read().decode())
         CACHE.write_text(json.dumps(items))
         log(f"news calendar downloaded: {len(items)} events this week")
@@ -46,7 +46,19 @@ def fetch(force: bool = False, log=print) -> list[dict]:
         if CACHE.exists():
             log(f"news calendar download failed ({e}); using saved copy")
             return json.loads(CACHE.read_text())
-        raise
+        # koi copy nahi: bot band mat karo, khaali calendar se chalo, har ghante dobara try hoga
+        log(f"WARNING: news calendar download failed ({e}) and no saved copy -> NO news block until next hourly retry")
+        return []
+
+
+def _ssl_context():
+    """Naye Windows server pe root certificates poore nahi hote -> certifi ki list use karo."""
+    import ssl
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 def live_events(force: bool = False, log=print):
