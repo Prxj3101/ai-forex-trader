@@ -79,10 +79,21 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
         raw = json.loads(f.read_text())
     except Exception:  # noqa: BLE001 - file likhi ja rahi ho
         return out
-    bars = raw.get("bars") or []
+    bars = list(raw.get("bars") or [])
+    # chal rahi candle (health.json, har ~5 s) jodo -> chart live hilta hai
+    hf = live / "health.json"
+    if bars and hf.exists():
+        try:
+            fb = (json.loads(hf.read_text()).get("forming") or {}).get(symbol)
+            if fb and fb[0] > bars[-1][0]:
+                bars.append(fb)
+                out["forming_time"] = fb[0]
+        except Exception:  # noqa: BLE001
+            pass
     if bars:
         d = pd.DataFrame(bars, columns=["t", "open", "high", "low", "close"])
         d.index = pd.to_datetime(d["t"], unit="s", utc=True)
+        d = d[~d.index.duplicated(keep="last")].sort_index().dropna()
         if tf != "M5":
             # trading clock (NY 5 PM = din ka shuru) jaisa hi: M15 / H1 boundaries UTC pe bhi same hote hain
             d = d.resample(TF_RULE[tf], label="left", closed="left").agg(

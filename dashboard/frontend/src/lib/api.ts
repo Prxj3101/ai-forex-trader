@@ -403,6 +403,7 @@ export type LiveChart = {
   status?: string
   error?: string
   bar_time?: number
+  forming_time?: number
   candles: Omit<Candle, 'spread'>[]
   zones: LiveWatchZone[]
   open: { direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; lots: number; r_now: number | null; fill_time: number | null }[]

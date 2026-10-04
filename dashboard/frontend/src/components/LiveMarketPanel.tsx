@@ -24,7 +24,7 @@ import { ZonesPrimitive } from '../lib/zonesPrimitive'
   Data VPS se aata hai (/api/live/chart + /api/live ka watch / health). Sirf dikhata hai.
 */
 
-const CHART_POLL_MS = 15_000
+const CHART_POLL_MS = 5_000
 const PAIRS = ['EURUSD', 'USDJPY', 'GBPUSD']
 const TFS = ['M5', 'M15', 'H1'] as const
 const pipOf = (s: string) => (s.endsWith('JPY') ? 0.01 : 0.0001)
@@ -119,6 +119,10 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
         })
         .catch((e: unknown) => { if (alive) setErr(e instanceof Error ? e.message : String(e)) })
     }
+    // naya pair / TF: purana chart turant saaf karo (warna galat pair ka data dikhta rehta)
+    series.current?.setData([])
+    zones.current?.setZones([], [])
+    markers.current?.setMarkers([])
     load()
     const id = window.setInterval(load, CHART_POLL_MS)
     return () => { alive = false; window.clearInterval(id) }
@@ -127,8 +131,11 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
   useEffect(() => {
     const s = series.current
     if (!s || !data || data.symbol !== symbol || data.tf !== tf) return
+    const key = `${symbol}-${tf}`
+    const fresh = fitKey.current !== key
     const d = digitsOf(symbol)
     s.applyOptions({ priceFormat: { type: 'price', precision: d, minMove: 1 / 10 ** d } })
+    if (fresh) chart.current?.priceScale('right').applyOptions({ autoScale: true })   // naye pair ki price range pe fit
     s.setData(data.candles.map((c) => ({ ...c, time: c.time as UTCTimestamp })))
     zones.current?.setZones(data.zones.map(toZone).filter((z): z is Zone => z !== null), data.candles.map((c) => c.time))
 
@@ -156,19 +163,25 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
     mk.sort((a, b) => (a.time as number) - (b.time as number))
     markers.current?.setMarkers(mk)
 
-    const key = `${symbol}-${tf}`
-    if (fitKey.current !== key && data.candles.length) {
+    if (fresh && data.candles.length) {
       fitKey.current = key
       chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 120), to: data.candles.length + 3 })
     }
   }, [data, symbol, tf])
 
+  const mine = data && data.symbol === symbol && data.tf === tf ? data : null
   return (
     <div className="relative">
       <div ref={box} className="h-[380px] w-full" />
-      {(err || !data || data.candles.length === 0) && (
+      {mine?.forming_time && (
+        <div className="pointer-events-none absolute left-2 top-1 flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--green)' }}
+          title="The last candle is still forming and updates every few seconds">
+          <i className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: 'var(--green)' }} /> LIVE
+        </div>
+      )}
+      {(err || !mine || mine.candles.length === 0) && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[11px] text-muted">
-          {err ?? (!data ? 'Loading live candles...' : 'No live candles yet. They appear after the new bot version runs one candle.')}
+          {err ?? (!mine ? `Loading ${symbol} ${tf}...` : `No live candles for ${symbol} yet. They appear after the bot checks this pair once.`)}
         </div>
       )}
     </div>

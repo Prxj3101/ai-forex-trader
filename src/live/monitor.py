@@ -158,6 +158,20 @@ def write_health(feed, eng, live_dir: Path, started_at: pd.Timestamp, guard=None
                 prices[s] = {"bid": float(t.bid), "ask": float(t.ask),
                              "spread_pips": round((t.ask - t.bid) / pip, 2),
                              "tick_age_sec": round(age) if age is not None else None}
+            # abhi chal rahi (forming) M5 candle -> dashboard chart TradingView jaisa hilta rahe
+            forming = {}
+            for s in eng.symbols:
+                try:
+                    r = mt5.copy_rates_from_pos(s, mt5.TIMEFRAME_M5, 0, 1)
+                    if r is None or len(r) == 0:
+                        continue
+                    t0 = feed._to_utc(np.array([r[0]["time"]]))[0]
+                    if pd.notna(t0):
+                        forming[s] = [int(t0.timestamp()), float(r[0]["open"]), float(r[0]["high"]),
+                                      float(r[0]["low"]), float(r[0]["close"])]
+                except Exception:  # noqa: BLE001
+                    continue
+            h["forming"] = forming
         h["prices"] = prices
         h["market_open"] = fresh
         h["system"] = _system(_MT5_PID)

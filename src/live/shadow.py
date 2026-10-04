@@ -477,7 +477,7 @@ def reset_state(out: Path = LIVE):
     print(f"reset: purane files '_old_{stamp}' naam se rakh diye. Ab $10,000 se fresh shuru.")
 
 
-def run_live(poll_s: int = 10):
+def run_live(poll_s: int = 5):
     from src.live import monitor
     from src.live.feeds import MT5Feed
     monitor.start_log(LIVE)                      # bot window ka sab kuch data/live/bot.log mein bhi (dashboard ke liye)
