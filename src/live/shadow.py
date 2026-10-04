@@ -101,6 +101,37 @@ def _pips(symbol, v):
     return round(float(v) / PIP[symbol], 2)
 
 
+def _unix(t):
+    try:
+        return int(pd.Timestamp(t).timestamp())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _num(v, nd=5):
+    try:
+        v = float(v)
+        return None if np.isnan(v) else round(v, nd)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _watch_row(r, o, reason) -> dict:
+    """Ek zone jo bot abhi dekh raha hai -> dashboard watchlist / chart box."""
+    return dict(direction=o["direction"], entry=o["entry"], sl=o["sl"], sl_pips=o["sl_pips"], score=o["score"],
+                exit=o["exit"], lots=o["lots"], status="ready" if reason is None else _category(reason),
+                reason=reason or "", zone_candle_time=_unix(r.zone_candle_time), created_at=_unix(r.created_at),
+                top=_num(getattr(r, "top", None)), bottom=_num(getattr(r, "bottom", None)),
+                body_top=_num(getattr(r, "body_top", None)), body_bottom=_num(getattr(r, "body_bottom", None)),
+                disp_atr=_num(getattr(r, "disp_atr", None), 2), has_fvg=bool(getattr(r, "has_fvg", False)))
+
+
+def _atomic_json(path: Path, obj):
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(obj, default=str))
+    tmp.replace(path)
+
+
 def wf_commission():
     from src.ml import walkforward as wf
     return wf.COMMISSION
@@ -108,8 +139,10 @@ def wf_commission():
 
 class ShadowEngine:
     def __init__(self, feed, symbols=None, capital: float = 10_000.0, out_dir: Path = LIVE, log=print,
-                 news_guard=None, resume: bool = False, spread_floor: bool | None = None):
+                 news_guard=None, resume: bool = False, spread_floor: bool | None = None, write_view: bool = True):
         self.feed, self.log = feed, log
+        self.write_view = write_view        # dashboard ke liye watchlist + chart candles likho (replay mein off)
+        self.watch: dict = {}               # symbol -> zones jo bot abhi dekh raha hai (is candle ke candidates)
         self.spread_floor = config.ML_SPREAD_FLOOR if spread_floor is None else spread_floor
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = Brain()
@@ -165,6 +198,23 @@ class ShadowEngine:
         self._update_open(symbol, m5)
         self._update_whatif(symbol, m5)
         self._decide(symbol, m5, bar_time)
+        if self.write_view:
+            self._write_view(symbol, m5, bar_time)
+
+    # dashboard: chart candles + watchlist (sirf dikhane ke liye, trading pe asar nahi)
+    def _write_view(self, symbol, m5, bar_time):
+        try:
+            tail = m5.tail(1500)
+            ts = [int(t.timestamp()) for t in tail.index]          # unix seconds (index resolution se independent)
+            bars = [[int(t), float(o), float(h), float(lw), float(c_)] for t, o, h, lw, c_ in
+                    zip(ts, tail["open"], tail["high"], tail["low"], tail["close"])]
+            _atomic_json(self.out / f"chart_{symbol}.json", {"symbol": symbol, "bar_time": int(bar_time.timestamp()),
+                                                             "bars": bars})
+            _atomic_json(self.out / "watchlist.json", {"updated": pd.Timestamp.now(tz="UTC").isoformat(),
+                                                       "threshold": round(float(self.brain.threshold), 3),
+                                                       "symbols": self.watch})
+        except Exception as e:  # noqa: BLE001 - dashboard file kabhi bot na roke
+            self.log(f"view: dashboard file likhne mein dikkat ({e.__class__.__name__}: {e})")
 
     # 1) armed orders of the previous candle: filled?
     def _resolve_armed(self, symbol, m5, bar_time):
@@ -233,6 +283,7 @@ class ShadowEngine:
     def _decide(self, symbol, m5, bar_time):
         c = candidates(symbol, m5, bar_time, spread_floor=self.spread_floor)
         self.armed.setdefault(symbol, [])
+        self.watch[symbol] = {"bar_time": int(bar_time.timestamp()), "zones": []}
         if c.empty:
             return
         c = self.brain.score(c)
@@ -252,6 +303,7 @@ class ShadowEngine:
             wi.append(dict(o, label=_category(reason), reason=reason or "",
                            cost_r=float(r.cost_r) * self.cfg.commission_per_lot / wf_commission()
                            if pd.notna(r.cost_r) else None))
+            self.watch[symbol]["zones"].append(_watch_row(r, o, reason))
             if reason is None:
                 self.armed[symbol].append(o)
                 self._log_decision(symbol, o, "TAKE", f"lots {o['lots']}, risk {o['risk_pct']:.2f}%, {o['exit']}")
@@ -475,7 +527,7 @@ def run_replay(start: str, end: str, out: Path):
     out.mkdir(parents=True, exist_ok=True)
     for f in ("decisions.csv", "shadow_trades.csv", "closed_trades.csv", "whatif.csv", "shadow_state.json"):
         (out / f).unlink(missing_ok=True)
-    eng = ShadowEngine(feed, out_dir=out, spread_floor=False)   # Dukascopy data = training data, floor nahi
+    eng = ShadowEngine(feed, out_dir=out, spread_floor=False, write_view=False)   # Dukascopy = training data, floor nahi
     t0 = time.time()
     for i, _ in enumerate(feed):
         for s in eng.symbols:

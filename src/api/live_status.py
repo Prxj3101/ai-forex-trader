@@ -65,6 +65,62 @@ def _pf(x: pd.Series):
     return round(float(x[x > 0].sum() / gl), 2) if gl > 0 else None
 
 
+TF_RULE = {"M5": "5min", "M15": "15min", "H1": "1h"}
+
+
+def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
+    """Live chart: bot ke MT5 candles (data/live/chart_SYM.json) + zones jo bot dekh raha hai + is pair ke trades."""
+    tf = tf if tf in TF_RULE else "M15"
+    out: dict = {"symbol": symbol, "tf": tf, "candles": [], "zones": [], "open": [], "trades": []}
+    f = live / f"chart_{symbol}.json"
+    if not f.exists():
+        return out
+    try:
+        raw = json.loads(f.read_text())
+    except Exception:  # noqa: BLE001 - file likhi ja rahi ho
+        return out
+    bars = raw.get("bars") or []
+    if bars:
+        d = pd.DataFrame(bars, columns=["t", "open", "high", "low", "close"])
+        d.index = pd.to_datetime(d["t"], unit="s", utc=True)
+        if tf != "M5":
+            # trading clock (NY 5 PM = din ka shuru) jaisa hi: M15 / H1 boundaries UTC pe bhi same hote hain
+            d = d.resample(TF_RULE[tf], label="left", closed="left").agg(
+                {"open": "first", "high": "max", "low": "min", "close": "last"}).dropna()
+        d = d.tail(n)
+        out["candles"] = [{"time": int(t.timestamp()), "open": float(r.open), "high": float(r.high),
+                           "low": float(r.low), "close": float(r.close)} for t, r in d.iterrows()]
+    out["bar_time"] = raw.get("bar_time")
+    wl = live / "watchlist.json"
+    if wl.exists():
+        try:
+            out["zones"] = (json.loads(wl.read_text()).get("symbols", {}).get(symbol) or {}).get("zones", [])
+        except Exception:  # noqa: BLE001
+            pass
+    sf = live / "shadow_state.json"
+    if sf.exists():
+        try:
+            st = json.loads(sf.read_text())
+            out["open"] = [{"direction": t.get("direction"), "entry": clean(t.get("entry")), "sl": clean(t.get("sl")),
+                            "exit": t.get("exit"), "lots": clean(t.get("lots")), "r_now": clean(t.get("r_now")),
+                            "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
+                           for t in st.get("open_trades", []) if t.get("symbol") == symbol]
+        except Exception:  # noqa: BLE001
+            pass
+    ct = live / "closed_trades.csv"
+    if ct.exists():
+        try:
+            c = pd.read_csv(ct)
+            c = c[c["symbol"] == symbol].tail(30)
+            out["trades"] = [{"direction": r.direction, "entry": clean(r.entry), "r": clean(r.r),
+                              "exit_reason": r.exit_reason, "pnl": clean(r.pnl),
+                              "fill_ts": to_unix(pd.Timestamp(r.fill_time)), "exit_ts": to_unix(pd.Timestamp(r.exit_time))}
+                             for r in c.itertuples(index=False)]
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
     """Shadow bot ka live hisaab: account, khule trades, band trades, decisions, what-if summary."""
     from src.risk.portfolio_sim import RiskConfig, trade_risk_pct, trading_day
@@ -86,6 +142,11 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
             health = None
     out["health"] = health
     out["log"] = tail_lines(live / "bot.log", 150)
+    wl = live / "watchlist.json"
+    try:
+        out["watch"] = json.loads(wl.read_text()) if wl.exists() else None
+    except Exception:  # noqa: BLE001
+        out["watch"] = None
 
     sf = live / "shadow_state.json"
     if not sf.exists():

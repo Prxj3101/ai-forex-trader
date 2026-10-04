@@ -17,6 +17,7 @@ Ya start_live_api.bat (Startup folder mein shortcut -> VPS restart ke baad khud 
 Endpoints:
     GET /health    -> {"ok": true}   (token nahi chahiye, sirf "server zinda hai?")
     GET /api/live  -> wahi JSON jo dashboard ka LIVE panel use karta hai (token chahiye)
+    GET /api/live/chart?symbol=EURUSD&tf=M15 -> live MT5 candles + zones + trades (token chahiye)
 """
 from __future__ import annotations
 
@@ -66,6 +67,15 @@ def live(decisions: int = 40, trades: int = 30, x_live_token: str = Header(defau
         raise HTTPException(401, "bad token")
     decisions, trades = min(max(decisions, 1), 200), min(max(trades, 1), 200)
     return live_status.build(LIVE, decisions, trades)
+
+
+@app.get("/api/live/chart")
+def live_chart(symbol: str = "EURUSD", tf: str = "M15", x_live_token: str = Header(default="")):
+    if not hmac.compare_digest(x_live_token, TOKEN):
+        raise HTTPException(401, "bad token")
+    if not symbol.isalpha() or len(symbol) > 10:          # sirf "EURUSD" jaisa naam (file path safe)
+        raise HTTPException(400, "bad symbol")
+    return live_status.build_chart(LIVE, symbol.upper(), tf)
 
 
 if __name__ == "__main__":

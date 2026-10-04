@@ -459,6 +459,35 @@ def _remote_cfg() -> dict | None:
     return cfg if cfg.get("url") and cfg.get("token") else None
 
 
+def _remote_get(remote: dict, path: str, params: dict) -> dict:
+    """VPS ke live_api se JSON lao. Gadbad ho toh {"status": "unreachable", ...}."""
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    url = remote["url"].rstrip("/") + path + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"X-Live-Token": remote["token"]})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read().decode()) | {"source": "vps"}
+    except urllib.error.HTTPError as e:
+        msg = "VPS rejected the token (check data/live_remote.json)" if e.code == 401 else f"VPS error {e.code}"
+        return {"status": "unreachable", "source": "vps", "error": msg}
+    except Exception as e:  # noqa: BLE001 - VPS band / IP badla / firewall
+        return {"status": "unreachable", "source": "vps", "error": f"Cannot reach VPS: {e.__class__.__name__}"}
+
+
+@app.get("/api/live/chart")
+def live_chart(symbol: str = "EURUSD", tf: str = "M15"):
+    """Live chart: bot ke MT5 candles + zones jo woh dekh raha hai + is pair ke trades."""
+    from src.api import live_status as ls
+    if not symbol.isalpha() or len(symbol) > 10:
+        raise HTTPException(400, "bad symbol")
+    remote = _remote_cfg()
+    if remote is None:
+        return ls.build_chart(LIVE, symbol.upper(), tf) | {"source": "local"}
+    return _remote_get(remote, "/api/live/chart", {"symbol": symbol.upper(), "tf": tf})
+
+
 @app.get("/api/live")
 def live_status(decisions: int = 40, trades: int = 30):
     """Shadow bot ka live hisaab: account, khule trades, band trades, decisions, what-if summary."""
@@ -467,21 +496,7 @@ def live_status(decisions: int = 40, trades: int = 30):
     remote = _remote_cfg()
     if remote is None:
         return ls.build(LIVE, decisions, trades) | {"source": "local"}
-
-    import urllib.error
-    import urllib.parse
-    import urllib.request
-    url = remote["url"].rstrip("/") + "/api/live?" + urllib.parse.urlencode({"decisions": decisions, "trades": trades})
-    req = urllib.request.Request(url, headers={"X-Live-Token": remote["token"]})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as r:
-            out = json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        msg = "VPS rejected the token (check data/live_remote.json)" if e.code == 401 else f"VPS error {e.code}"
-        return {"status": "unreachable", "source": "vps", "error": msg}
-    except Exception as e:  # noqa: BLE001 - VPS band / IP badla / firewall
-        return {"status": "unreachable", "source": "vps", "error": f"Cannot reach VPS: {e.__class__.__name__}"}
-    return out | {"source": "vps"}
+    return _remote_get(remote, "/api/live", {"decisions": decisions, "trades": trades})
 
 
 # ----------------------------------------------------------------------

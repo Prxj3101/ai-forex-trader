@@ -364,12 +364,56 @@ export type LiveHealth = {
   }
   restarts: { starts: number | null; last: string | null }
   news_blocked?: Record<string, string | null>
+  news?: {
+    block_before_min: number | null
+    block_after_min: number | null
+    events: { time: number; currency: string; event: string; pairs: string[] }[]
+  }
+}
+
+export type LiveWatchZone = {
+  direction: 'bull' | 'bear'
+  entry: number
+  sl: number
+  sl_pips: number
+  score: number
+  exit: 'tp1' | 'trail'
+  lots: number
+  status: string
+  reason: string
+  zone_candle_time: number | null
+  created_at: number | null
+  top: number | null
+  bottom: number | null
+  body_top: number | null
+  body_bottom: number | null
+  disp_atr: number | null
+  has_fvg: boolean
+}
+
+export type LiveWatch = {
+  updated: string
+  threshold: number
+  symbols: Record<string, { bar_time: number; zones: LiveWatchZone[] }>
+}
+
+export type LiveChart = {
+  symbol: string
+  tf: string
+  status?: string
+  error?: string
+  bar_time?: number
+  candles: Omit<Candle, 'spread'>[]
+  zones: LiveWatchZone[]
+  open: { direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; lots: number; r_now: number | null; fill_time: number | null }[]
+  trades: { direction: 'bull' | 'bear'; entry: number; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number }[]
 }
 
 export type LiveStatus = {
   status: 'running' | 'stopped' | 'none' | 'unreachable' | 'market_closed'
   health?: LiveHealth | null
   log?: string[]
+  watch?: LiveWatch | null
   source?: 'local' | 'vps'
   error?: string
   updated?: number | null
@@ -425,6 +469,7 @@ export const api = {
   riskReport: () => request<RiskReport>('/api/risk/report'),
   config: () => request<BotConfig>('/api/config'),
   live: () => request<LiveStatus>('/api/live'),
+  liveChart: (symbol: string, tf: string) => request<LiveChart>('/api/live/chart', { symbol, tf }),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>
     request<ResearchV2Report>('/api/research/v2/report', {

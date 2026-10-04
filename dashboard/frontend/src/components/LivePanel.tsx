@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, type LiveHealth, type LiveStatus } from '../lib/api'
 import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
+import LiveMarketPanel from './LiveMarketPanel'
 
 /*
   LIVE SHADOW ACCOUNT: shadow bot (src/live/shadow.py) jo files likhta hai, unka live view.
@@ -134,7 +135,13 @@ function HealthStrip({ h }: { h: LiveHealth }) {
         color={m?.connected ? 'var(--green)' : 'var(--red)'}
         tip={m ? `MetaTrader 5 build ${m.build} · algo trading ${m.trade_allowed ? 'allowed' : 'NOT allowed'}` : 'No MT5 info'}
       />
-      {m?.ping_ms != null && <Pill label="PING" value={`${Math.round(m.ping_ms)} ms`} tip="Time for a message from the VPS to the broker server and back" />}
+      {m?.ping_ms != null && (
+        <Pill
+          label="PING"
+          value={m.ping_ms >= 9000 ? '—' : `${Math.round(m.ping_ms)} ms`}
+          tip={m.ping_ms >= 9000 ? 'Not measured right now (MT5 reports 10 s when it has no recent ping, e.g. market closed)' : 'Time for a message from the VPS to the broker server and back'}
+        />
+      )}
       {m && (
         <Pill
           label="DEMO"
@@ -300,8 +307,12 @@ export default function LivePanel({ connected }: { connected: boolean }) {
     </div>
   )
 
+  const market = <LiveMarketPanel connected={connected} data={data} />
+
   if (!data || data.status === 'none' || !data.account) {
     return (
+      <>
+      {market}
       <div className="panel">
         {header}
         <div className="py-6 text-center text-[11px] text-muted">
@@ -312,6 +323,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
               : 'No live shadow data yet. Start the bot: python src\\live\\shadow.py (MT5 demo must be open).'}
         </div>
       </div>
+      </>
     )
   }
 
@@ -324,6 +336,8 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   const whatif = data.whatif ?? []
 
   return (
+    <>
+    {market}
     <div className="panel">
       {header}
 
@@ -458,5 +472,6 @@ export default function LivePanel({ connected }: { connected: boolean }) {
 
       <BotLog lines={data.log ?? []} />
     </div>
+    </>
   )
 }

@@ -167,6 +167,21 @@ def write_health(feed, eng, live_dir: Path, started_at: pd.Timestamp, guard=None
                 h["news_blocked"] = {s: (guard.blocked(s, now) or None) for s in eng.symbols}
             except Exception:  # noqa: BLE001
                 pass
+            try:   # is hafte ki high-impact news (dashboard news panel)
+                from src import config
+                from src.features.news import PAIR_CCY
+                ev = guard.events
+                h["news"] = {
+                    "block_before_min": config.NEWS_BLOCK_BEFORE_MIN if config.NEWS_BLOCK else None,
+                    "block_after_min": config.NEWS_BLOCK_AFTER_MIN if config.NEWS_BLOCK else None,
+                    "events": [
+                        {"time": int(pd.Timestamp(r.time).timestamp()), "currency": str(r.currency), "event": str(r.event),
+                         "pairs": [s for s in eng.symbols if str(r.currency) in PAIR_CCY.get(s, ())]}
+                        for r in ev.sort_values("time").itertuples(index=False)
+                    ] if ev is not None and len(ev) else [],
+                }
+            except Exception:  # noqa: BLE001
+                pass
         tmp = live_dir / "health.json.tmp"
         tmp.write_text(json.dumps(h, default=str))
         tmp.replace(live_dir / "health.json")
