@@ -333,7 +333,9 @@ export type LiveDecision = {
 export type LiveWhatIf = { decision: string; zones: number; win_pct: number; net_brain: number; net_tp1: number; net_trail: number }
 
 export type LiveStatus = {
-  status: 'running' | 'stopped' | 'none'
+  status: 'running' | 'stopped' | 'none' | 'unreachable'
+  source?: 'local' | 'vps'
+  error?: string
   updated?: number | null
   age_sec?: number | null
   full_state?: boolean

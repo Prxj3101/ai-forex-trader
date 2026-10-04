@@ -116,21 +116,37 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   }, [connected, tick])
 
   const running = data?.status === 'running'
-  const statusColor = running ? 'var(--green)' : data?.status === 'stopped' ? 'var(--amber)' : 'var(--muted)'
+  const statusColor = running
+    ? 'var(--green)'
+    : data?.status === 'stopped'
+      ? 'var(--amber)'
+      : data?.status === 'unreachable'
+        ? 'var(--red)'
+        : 'var(--muted)'
+  const unreachable = data?.status === 'unreachable'
   const statusText = !data
     ? 'LOADING'
-    : data.status === 'none'
-      ? 'NOT STARTED'
-      : running
-        ? `RUNNING · BOT LAST CHECK ${ago(data.age_sec).toUpperCase()}`
-        : `STOPPED · BOT LAST CHECK ${ago(data.age_sec).toUpperCase()}`
+    : unreachable
+      ? 'VPS NOT REACHABLE'
+      : data.status === 'none'
+        ? 'NOT STARTED'
+        : running
+          ? `RUNNING · BOT LAST CHECK ${ago(data.age_sec).toUpperCase()}`
+          : `STOPPED · BOT LAST CHECK ${ago(data.age_sec).toUpperCase()}`
+  const sourceText = data?.source === 'vps' ? 'VPS' : data?.source === 'local' ? 'THIS PC' : null
 
   const header = (
     <div className="ptitle flex-wrap">
       <span>LIVE SHADOW ACCOUNT</span>
       <em className="flex items-center gap-2" title="Paper trading on live MT5 prices. The bot sends no real orders.">
         <i className="inline-block h-2 w-2 rounded-full" style={{ background: statusColor, boxShadow: running ? `0 0 8px ${statusColor}` : 'none' }} />
-        <span style={{ color: statusColor }} title="The bot saves its account once per new 5-minute candle, so 0 to 5 minutes is normal. Over 10 minutes means it has stopped.">{statusText}</span> · PAPER TRADING · NO REAL ORDERS
+        <span style={{ color: statusColor }} title="The bot saves its account once per new 5-minute candle, so 0 to 5 minutes is normal. Over 10 minutes means it has stopped.">{statusText}</span>
+        {sourceText && (
+          <span title={sourceText === 'VPS' ? 'Data comes from the bot running on the VPS (read-only).' : 'Data comes from the bot folder on this computer.'}>
+            · SOURCE {sourceText}
+          </span>
+        )}
+        · PAPER TRADING · NO REAL ORDERS
         <button
           className="chip"
           disabled={!connected || loading}
@@ -151,7 +167,11 @@ export default function LivePanel({ connected }: { connected: boolean }) {
       <div className="panel">
         {header}
         <div className="py-6 text-center text-[11px] text-muted">
-          {err ? `Could not load live data: ${err}` : 'No live shadow data yet. Start the bot: python src\\live\\shadow.py (MT5 demo must be open).'}
+          {err
+            ? `Could not load live data: ${err}`
+            : unreachable
+              ? `${data?.error ?? 'Cannot reach the VPS.'} Check that the VPS is running, live_api is started, and your home IP is allowed in the AWS security group.`
+              : 'No live shadow data yet. Start the bot: python src\\live\\shadow.py (MT5 demo must be open).'}
         </div>
       </div>
     )
