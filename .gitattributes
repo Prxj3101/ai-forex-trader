@@ -1,2 +1,4 @@
 # LightGBM model files ko line endings ke saath mat chhedo (CRLF karne pe model load fail hota hai)
 models/*.txt -text
+# Windows batch files ko hamesha CRLF chahiye (LF pe goto/label gadbad karte hain)
+*.bat text eol=crlf
