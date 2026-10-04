@@ -28,6 +28,14 @@ DATA = ROOT / "data" / "processed"
 NY = "America/New_York"
 
 
+def _fresh_offset(server: float, now: float):
+    """Tick taaza (pichhle 10 min) ho toh broker offset (ghante, -12..+14), warna None."""
+    h = round((server - now) / 3600)
+    if -12 <= h <= 14 and -600 < (server - h * 3600) - now < 120:
+        return int(h)
+    return None
+
+
 class MT5Feed:
     def __init__(self, history_days: int = 200, log=print):
         import MetaTrader5 as mt5
@@ -42,27 +50,80 @@ class MT5Feed:
         self.log = log
         self.mode = "ny+7"
         self.fixed_hours = None
+        self.unverified = False          # True = offset abhi pakka nahi, market khulte hi dobara naapo
         self._check_offset()
 
+    def _set(self, hours, ny_rule, how):
+        """hours = broker server time - UTC (ghante)."""
+        if hours == ny_rule:
+            self.mode, self.fixed_hours = "ny+7", None
+            self.log(f"feed: broker server time = NY+7 (abhi UTC{hours:+d}) [{how}]")
+        else:
+            self.mode, self.fixed_hours = "fixed", int(hours)
+            self.log(f"feed: broker server time = UTC{hours:+d} (fixed) [{how}]")
+
     def _check_offset(self):
-        """Abhi ka measured offset (tick time - UTC) vs 'NY+7' rule."""
+        """Broker ki ghadi ka UTC offset tay karo: config > live tick > weekend close."""
+        from src import config
+        mt5 = self.mt5
+        now = datetime.now(timezone.utc)
+        now_ny = pd.Timestamp(now).tz_convert(NY)
+        ny_rule = int(now_ny.utcoffset().total_seconds() / 3600 + 7)
+        self.unverified = False
+
+        cfg = getattr(config, "BROKER_UTC_OFFSET", None)
+        if cfg is not None:
+            if cfg == "ny+7":
+                self.mode, self.fixed_hours = "ny+7", None
+                self.log("feed: broker server time = NY+7 [config]")
+            else:
+                self._set(int(cfg), ny_rule, "config")
+            return
+
+        ticks = [mt5.symbol_info_tick(s) for s in ("EURUSD", "USDJPY", "GBPUSD")]
+        ticks = [t for t in ticks if t is not None]
+        if not ticks:
+            self.unverified = True
+            self.log("feed WARNING: koi tick nahi mila; NY+7 maan raha hoon, market khulte hi dobara check")
+            return
+        server = max(t.time for t in ticks)                       # server wall-clock, epoch jaisa number
+        measured = _fresh_offset(server, now.timestamp())
+        if measured is not None:
+            self._set(measured, ny_rule, "live tick")
+            return
+
+        # Market band: aakhri tick = weekly close (Friday 5 PM New York) ke just pehle
+        days_back = (now_ny.weekday() - 4) % 7                    # Friday = 4
+        close_ny = (now_ny - pd.Timedelta(days=days_back)).normalize() + pd.Timedelta(hours=17)
+        if close_ny > now_ny:
+            close_ny -= pd.Timedelta(days=7)
+        weekend = now_ny - close_ny < pd.Timedelta(hours=49)     # Fri 5pm -> Sun 6pm NY
+        diff_h = (server - close_ny.tz_convert("UTC").timestamp()) / 3600
+        inferred = round(diff_h)
+        if weekend and abs(diff_h - inferred) < 0.25 and -12 <= inferred <= 14:
+            close_offset = int(close_ny.utcoffset().total_seconds() / 3600 + 7)
+            # "NY+7" broker ka offset close ke waqt close_offset hota; abhi ke DST ke hisaab se ny_rule
+            self._set(ny_rule if inferred == close_offset else inferred, ny_rule, "weekend close")
+            self.unverified = True                                # market khulne pe live tick se confirm
+        else:
+            self.unverified = True
+            self.log(f"feed WARNING: market band, offset pakka nahi (diff {diff_h:.2f}h); NY+7 maan raha hoon, "
+                     f"market khulte hi dobara check. Pakka karna ho toh config.BROKER_UTC_OFFSET set karo.")
+
+    def _recheck_if_needed(self):
+        if not self.unverified:
+            return
         mt5 = self.mt5
         ticks = [mt5.symbol_info_tick(s) for s in ("EURUSD", "USDJPY", "GBPUSD")]
         ticks = [t for t in ticks if t is not None]
         if not ticks:
             return
-        now = datetime.now(timezone.utc)
         server = max(t.time for t in ticks)
-        measured = round((server - now.timestamp()) / 3600)
-        stale = now.timestamp() - (server - measured * 3600) > 600
-        ny_rule = int((pd.Timestamp(now).tz_convert(NY).utcoffset().total_seconds() / 3600) + 7)
-        if stale:
-            self.log(f"feed: market band hai (purana tick); NY+7 rule use (abhi UTC{ny_rule:+d})")
-        elif measured != ny_rule:
-            self.mode, self.fixed_hours = "fixed", measured
-            self.log(f"feed WARNING: broker time UTC{measured:+d} != NY+7 rule (UTC{ny_rule:+d}). Fixed offset use kar raha hoon.")
-        else:
-            self.log(f"feed: broker server time = NY+7 (abhi UTC{measured:+d}) - OK")
+        if _fresh_offset(server, datetime.now(timezone.utc).timestamp()) is not None:   # tick taaza hai
+            old = (self.mode, self.fixed_hours)
+            self._check_offset()
+            if (self.mode, self.fixed_hours) != old:
+                self.log("feed: broker time badla (market khulne pe live check) - ab sahi offset use ho raha hai")
 
     def _to_utc(self, server_secs: np.ndarray) -> pd.DatetimeIndex:
         naive = pd.to_datetime(server_secs, unit="s")            # server wall-clock time (bina timezone)
@@ -73,6 +134,7 @@ class MT5Feed:
 
     def bars(self, symbol: str):
         mt5 = self.mt5
+        self._recheck_if_needed()
         info = mt5.symbol_info(symbol)
         if info is None:
             raise RuntimeError(f"{symbol} MT5 pe nahi mila")

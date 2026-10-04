@@ -94,6 +94,12 @@ NEWS_BLOCK_AFTER_MIN = 20
 ML_SPREAD_FLOOR = True
 BROKER_COMMISSION = 5.0
 
+# Broker ki MT5 ghadi (server time) UTC se kitni aage hai:
+#   None   = khud naapo (market khula: live tick se; weekend: Friday ke close se)
+#   "ny+7" = New York + 7h (MetaQuotes demo, kai brokers; DST apne aap)
+#   0      = UTC (Exness), 2 / 3 = fixed ghante
+BROKER_UTC_OFFSET = None
+
 
 # ----------------------------------------------------------------------
 # ACCOUNT PROFILES: kis type ke account pe bot chal raha hai -> kaunse extra rules

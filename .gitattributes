@@ -1,0 +1,2 @@
+# LightGBM model files ko line endings ke saath mat chhedo (CRLF karne pe model load fail hota hai)
+models/*.txt -text
