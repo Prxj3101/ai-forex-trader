@@ -406,8 +406,32 @@ export type LiveChart = {
   forming_time?: number
   candles: Omit<Candle, 'spread'>[]
   zones: LiveWatchZone[]
-  open: { direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; lots: number; r_now: number | null; fill_time: number | null }[]
-  trades: { direction: 'bull' | 'bear'; entry: number; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number }[]
+  open: {
+    direction: 'bull' | 'bear'
+    entry: number
+    sl: number
+    tp: number | null
+    stop_now: number | null
+    best_r: number | null
+    exit: string
+    lots: number
+    r_now: number | null
+    fill_time: number | null
+  }[]
+  trades: { direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number }[]
+  traded_zones?: {
+    direction: 'bull' | 'bear'
+    top: number | null
+    bottom: number | null
+    body_top: number | null
+    body_bottom: number | null
+    created_at: number | null
+    zone_candle_time: number | null
+    disp_atr: number | null
+    has_fvg: boolean
+    fill_time: number
+    exit_ts: number | null
+  }[]
 }
 
 export type LiveStatus = {

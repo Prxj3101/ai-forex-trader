@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type LiveChart, type LiveStatus, type LiveWatchZone, type Zone } from '../lib/api'
 import { useNow } from '../lib/hooks'
 import { NY, fmtTick, fmtTs } from '../lib/time'
+import { type Segment, SegmentsPrimitive } from '../lib/segmentsPrimitive'
 import { ZonesPrimitive } from '../lib/zonesPrimitive'
 
 /*
@@ -75,6 +76,7 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
   const chart = useRef<IChartApi | null>(null)
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const zones = useRef<ZonesPrimitive | null>(null)
+  const segsRef = useRef<SegmentsPrimitive | null>(null)
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const lines = useRef<IPriceLine[]>([])
   const fitKey = useRef('')
@@ -96,6 +98,9 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
     const s = c.addSeries(CandlestickSeries, { upColor: '#00ff88', downColor: '#ff2e63', borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff2e63' })
     const p = new ZonesPrimitive()
     s.attachPrimitive(p)
+    const sg = new SegmentsPrimitive()
+    s.attachPrimitive(sg)
+    segsRef.current = sg
     chart.current = c
     series.current = s
     zones.current = p
@@ -122,6 +127,7 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
     // naya pair / TF: purana chart turant saaf karo (warna galat pair ka data dikhta rehta)
     series.current?.setData([])
     zones.current?.setZones([], [])
+    segsRef.current?.setSegments([], [])
     markers.current?.setMarkers([])
     load()
     const id = window.setInterval(load, CHART_POLL_MS)
@@ -137,14 +143,58 @@ function LiveChartBox({ symbol, tf, connected }: { symbol: string; tf: string; c
     s.applyOptions({ priceFormat: { type: 'price', precision: d, minMove: 1 / 10 ** d } })
     if (fresh) chart.current?.priceScale('right').applyOptions({ autoScale: true })   // naye pair ki price range pe fit
     s.setData(data.candles.map((c) => ({ ...c, time: c.time as UTCTimestamp })))
-    zones.current?.setZones(data.zones.map(toZone).filter((z): z is Zone => z !== null), data.candles.map((c) => c.time))
+    const barTimes = data.candles.map((c) => c.time)
+    // zones: jo bot abhi dekh raha hai + jin zones se trade hua (trade ke baad bhi box rehta hai)
+    const traded: Zone[] = (data.traded_zones ?? []).flatMap((z) => {
+      if (z.top == null || z.bottom == null) return []
+      return [{
+        direction: z.direction, zone_candle_time: z.zone_candle_time ?? z.fill_time, created_at: z.created_at ?? z.fill_time,
+        top: z.top, bottom: z.bottom, body_top: z.body_top ?? z.top, body_bottom: z.body_bottom ?? z.bottom,
+        disp_atr: z.disp_atr ?? 0, has_fvg: z.has_fvg, first_touch_time: z.fill_time, first_touch_depth: null,
+        invalidated_time: z.exit_ts, touches: 1,
+      }]
+    })
+    zones.current?.setZones([...data.zones.map(toZone).filter((z): z is Zone => z !== null), ...traded], barTimes)
 
+    // trade lines: ENTRY / SL / TP / TRAIL SL (sirf trade ke time tak, TradingView position tool jaisa)
+    const GREEN = '#00ff88'
+    const RED = '#ff2e63'
+    const CYAN = '#00f0ff'
+    const AMBER = '#ffb020'
+    const segs: Segment[] = []
+    for (const t of data.open) {
+      if (!t.fill_time) continue
+      segs.push({ t1: t.fill_time, t2: null, price: t.entry, color: CYAN, width: 2, label: `ENTRY ${t.direction === 'bull' ? 'BUY' : 'SELL'} ${t.lots}` })
+      segs.push({ t1: t.fill_time, t2: null, price: t.sl, color: RED, dash: true, label: 'SL' })
+      if (t.tp != null) segs.push({ t1: t.fill_time, t2: null, price: t.tp, color: GREEN, dash: true, label: 'TP 1:1' })
+      if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) {
+        segs.push({ t1: t.fill_time, t2: null, price: t.stop_now, color: AMBER, width: 2, label: `TRAIL SL (best +${(t.best_r ?? 0).toFixed(1)}R)` })
+      }
+    }
+    for (const t of data.trades) {
+      const risk = Math.abs(t.entry - t.sl)
+      const sign = t.direction === 'bull' ? 1 : -1
+      segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.entry, color: CYAN, faded: true })
+      segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.sl, color: RED, dash: true, faded: true })
+      if (t.exit === 'tp1') segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.entry + sign * risk, color: GREEN, dash: true, faded: true })
+    }
+    for (const z of data.zones) {
+      if (z.status !== 'ready' || z.created_at == null) continue        // READY zone: agar bhara toh yahan entry / SL
+      segs.push({ t1: z.created_at, t2: null, price: z.entry, color: CYAN, dash: true, width: 1, label: 'READY entry' })
+      segs.push({ t1: z.created_at, t2: null, price: z.sl, color: RED, dash: true, width: 1, label: 'SL' })
+    }
+    segsRef.current?.setSegments(segs, barTimes)
+
+    // price axis pe labels (line nahi, sirf right side ka tag)
     for (const l of lines.current) s.removePriceLine(l)
     lines.current = []
     for (const t of data.open) {
-      const buy = t.direction === 'bull'
-      lines.current.push(s.createPriceLine({ price: t.entry, color: buy ? '#00ff88' : '#ff2e63', lineWidth: 2, lineStyle: LineStyle.Solid, axisLabelVisible: true, title: `${buy ? 'BUY' : 'SELL'} ${t.lots}` }))
-      lines.current.push(s.createPriceLine({ price: t.sl, color: '#ff2e63', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'SL' }))
+      const tag = (price: number, color: string, title: string) =>
+        lines.current.push(s.createPriceLine({ price, color, lineVisible: false, lineWidth: 1, lineStyle: LineStyle.Solid, axisLabelVisible: true, title }))
+      tag(t.entry, CYAN, 'ENTRY')
+      tag(t.sl, RED, 'SL')
+      if (t.tp != null) tag(t.tp, GREEN, 'TP')
+      if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) tag(t.stop_now, AMBER, 'TRAIL')
     }
 
     const first = data.candles.length ? data.candles[0].time : 0
@@ -235,7 +285,9 @@ export default function LiveMarketPanel({ connected, data }: { connected: boolea
           </div>
           <LiveChartBox symbol={symbol} tf={tf} connected={connected} />
           <div className="mt-1 text-[9px] text-muted">
-            Boxes = zones the bot is watching right now (thick line = entry). Solid line = open shadow trade entry, dashed = its stop. Arrows = fills, circles = exits with R.
+            Boxes = zones (bright = watching now, faded = already traded). Trade lines: <span style={{ color: '#00f0ff' }}>ENTRY</span> ·{' '}
+            <span style={{ color: '#ff2e63' }}>SL</span> · <span style={{ color: '#00ff88' }}>TP (1:1 trades)</span> ·{' '}
+            <span style={{ color: '#ffb020' }}>TRAIL SL (moves after +1R)</span>. Dotted = READY zone plan. Arrows = fills, circles = exits with R.
           </div>
         </div>
 

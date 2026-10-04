@@ -126,6 +126,25 @@ def _watch_row(r, o, reason) -> dict:
                 disp_atr=_num(getattr(r, "disp_atr", None), 2), has_fvg=bool(getattr(r, "has_fvg", False)))
 
 
+def _live_levels(t: dict, hi, lo, sp) -> dict:
+    """Khule trade ke chart levels: TP (sirf 1:1) aur abhi ka SL (trail mein +1R ke baad khiskta hai).
+    management.run_trade_full jaisa hi: best = ab tak ka sabse accha R (band candles), trail = best - 1R."""
+    bull, entry, risk = t["bull"], float(t["entry"]), float(t["risk"])
+    if len(hi):
+        fav = (hi - entry) / risk if bull else (entry - (lo + sp)) / risk
+        best = max(0.0, float(np.max(fav)))
+    else:
+        best = 0.0
+    pol = EXIT_POLICY[t["exit"]]
+    stop_r = -1.0
+    if pol.trail_r is not None and best >= pol.trail_start_r:
+        stop_r = max(stop_r, best - pol.trail_r)
+    sign = 1 if bull else -1
+    return dict(best_r=round(best, 3),
+                stop_now=round(entry + sign * stop_r * risk, 6),
+                tp=round(entry + sign * pol.tp_r * risk, 6) if pol.tp_r is not None else None)
+
+
 def _atomic_json(path: Path, obj):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(obj, default=str))
@@ -143,6 +162,11 @@ class ShadowEngine:
         self.feed, self.log = feed, log
         self.write_view = write_view        # dashboard ke liye watchlist + chart candles likho (replay mein off)
         self.watch: dict = {}               # symbol -> zones jo bot abhi dekh raha hai (is candle ke candidates)
+        self.traded_file = out_dir / "traded_zones.json"   # jin zones se trade hua -> chart pe box rehta hai
+        try:
+            self.traded: list = json.loads(self.traded_file.read_text()) if self.traded_file.exists() else []
+        except Exception:  # noqa: BLE001
+            self.traded = []
         self.spread_floor = config.ML_SPREAD_FLOOR if spread_floor is None else spread_floor
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = Brain()
@@ -201,6 +225,19 @@ class ShadowEngine:
         if self.write_view:
             self._write_view(symbol, m5, bar_time)
 
+    def _remember_traded_zone(self, t: dict):
+        """Trade hua -> us zone ka box yaad rakho (watchlist se hat jaata hai, chart pe nahi hatna chahiye)."""
+        if not self.write_view:
+            return
+        try:
+            z = t.get("zbox") or {}
+            self.traded.append(dict(z, symbol=t["symbol"], direction=t["direction"], fill_time=_unix(t["fill_time"]),
+                                    entry=t["entry"], sl=t["sl"], exit=t["exit"]))
+            self.traded = self.traded[-300:]
+            _atomic_json(self.traded_file, self.traded)
+        except Exception as e:  # noqa: BLE001
+            self.log(f"view: traded zone save mein dikkat ({e.__class__.__name__}: {e})")
+
     # dashboard: chart candles + watchlist (sirf dikhane ke liye, trading pe asar nahi)
     def _write_view(self, symbol, m5, bar_time):
         try:
@@ -240,6 +277,7 @@ class ShadowEngine:
                     continue
                 t = dict(o, status="open", fill_time=o["bar_time"])
                 self.open.append(t)
+                self._remember_traded_zone(t)
                 self.filled_now.add((symbol, str(o["zone"]), o["bar_time"]))
                 self._log_decision(symbol, o, "FILLED", f"lots {o['lots']}, exit {o['exit']}")
         self.armed[symbol] = keep
@@ -260,6 +298,7 @@ class ShadowEngine:
             done = why != "timeout" or (g - f) >= HOLD_BARS
             if not done:
                 t["r_now"] = round(float(r), 3)
+                t.update(_live_levels(t, hi[f:g], lo[f:g], sp[f:g]))     # chart: TP + abhi ka (trailing) SL
                 still.append(t)
                 continue
             slip = 0.0
@@ -300,10 +339,13 @@ class ShadowEngine:
         for r in c.itertuples(index=False):
             o = self._order(symbol, r, bar_time, risk_pct, braked)
             reason = self._skip_reason(symbol, r, o, today, bar_time)
+            wrow = _watch_row(r, o, reason)
+            o["zbox"] = {k: wrow[k] for k in ("top", "bottom", "body_top", "body_bottom", "created_at",
+                                               "zone_candle_time", "disp_atr", "has_fvg")}   # chart pe zone box
             wi.append(dict(o, label=_category(reason), reason=reason or "",
                            cost_r=float(r.cost_r) * self.cfg.commission_per_lot / wf_commission()
                            if pd.notna(r.cost_r) else None))
-            self.watch[symbol]["zones"].append(_watch_row(r, o, reason))
+            self.watch[symbol]["zones"].append(wrow)
             if reason is None:
                 self.armed[symbol].append(o)
                 self._log_decision(symbol, o, "TAKE", f"lots {o['lots']}, risk {o['risk_pct']:.2f}%, {o['exit']}")
@@ -470,7 +512,7 @@ class ShadowEngine:
 
 def reset_state(out: Path = LIVE):
     stamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    for f in ("shadow_state.json", "closed_trades.csv", "shadow_trades.csv", "whatif.csv"):
+    for f in ("shadow_state.json", "closed_trades.csv", "shadow_trades.csv", "whatif.csv", "traded_zones.json"):
         p = out / f
         if p.exists():
             p.replace(out / f"{p.stem}_old_{stamp}{p.suffix}")

@@ -113,6 +113,7 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
         try:
             st = json.loads(sf.read_text())
             out["open"] = [{"direction": t.get("direction"), "entry": clean(t.get("entry")), "sl": clean(t.get("sl")),
+                            "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")), "best_r": clean(t.get("best_r")),
                             "exit": t.get("exit"), "lots": clean(t.get("lots")), "r_now": clean(t.get("r_now")),
                             "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
                            for t in st.get("open_trades", []) if t.get("symbol") == symbol]
@@ -123,12 +124,25 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
         try:
             c = pd.read_csv(ct)
             c = c[c["symbol"] == symbol].tail(30)
-            out["trades"] = [{"direction": r.direction, "entry": clean(r.entry), "r": clean(r.r),
-                              "exit_reason": r.exit_reason, "pnl": clean(r.pnl),
+            out["trades"] = [{"direction": r.direction, "entry": clean(r.entry), "sl": clean(r.sl), "exit": r.exit,
+                              "r": clean(r.r), "exit_reason": r.exit_reason, "pnl": clean(r.pnl),
                               "fill_ts": to_unix(pd.Timestamp(r.fill_time)), "exit_ts": to_unix(pd.Timestamp(r.exit_time))}
                              for r in c.itertuples(index=False)]
         except Exception:  # noqa: BLE001
             pass
+    # jin zones se trade hua: box chart pe rehta hai (trade band hone pe exit time tak, halka)
+    tz = live / "traded_zones.json"
+    if tz.exists():
+        try:
+            exits = {t["fill_ts"]: t["exit_ts"] for t in out["trades"]}
+            first = out["candles"][0]["time"] if out["candles"] else 0
+            out["traded_zones"] = [dict(z, exit_ts=exits.get(z.get("fill_time")))
+                                   for z in json.loads(tz.read_text())
+                                   if z.get("symbol") == symbol and (z.get("fill_time") or 0) >= first - 6 * 86400]
+        except Exception:  # noqa: BLE001
+            out["traded_zones"] = []
+    else:
+        out["traded_zones"] = []
     return out
 
 
