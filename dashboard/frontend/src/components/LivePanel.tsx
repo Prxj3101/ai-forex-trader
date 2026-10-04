@@ -1,6 +1,6 @@
 import { AreaSeries, ColorType, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { api, type LiveStatus } from '../lib/api'
+import { api, type LiveHealth, type LiveStatus } from '../lib/api'
 import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
 
@@ -93,6 +93,139 @@ function ago(sec: number | null | undefined) {
   return `${Math.round(sec / 86400)} days ago`
 }
 
+function dur(sec: number) {
+  if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))}m`
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ${Math.round((sec % 3600) / 60)}m`
+  return `${Math.floor(sec / 86400)}d ${Math.round((sec % 86400) / 3600)}h`
+}
+
+function Pill({ label, value, color, tip }: { label: string; value: string; color?: string; tip: string }) {
+  return (
+    <div title={tip} className="cursor-help whitespace-nowrap">
+      <small className="mr-1 text-[9px] tracking-wider text-muted">{label}</small>
+      <b className="text-[11px] font-medium" style={{ color: color ?? 'var(--text)' }}>{value}</b>
+    </div>
+  )
+}
+
+function HealthStrip({ h }: { h: LiveHealth }) {
+  const m = h.mt5
+  const s = h.system ?? {}
+  const ramPct = s.ram_used_mb && s.ram_total_mb ? (s.ram_used_mb / s.ram_total_mb) * 100 : null
+  const lagging = h.age_sec > 120
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 border px-2.5 py-1.5" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}>
+      <Pill
+        label="BOT"
+        value={lagging ? `NO SIGNAL ${ago(h.age_sec).toUpperCase()}` : 'ALIVE'}
+        color={lagging ? 'var(--red)' : 'var(--green)'}
+        tip="The bot writes a health check every 10 seconds. No signal for over 2 minutes means the bot process stopped or the VPS is down."
+      />
+      <Pill label="UP" value={dur(h.uptime_sec)} tip={`Bot running since ${new Date(h.started_at).toLocaleString('en-GB', { hour12: false })}`} />
+      <Pill
+        label="RESTARTS"
+        value={h.restarts.starts == null ? '?' : `${h.restarts.starts}`}
+        color={(h.restarts.starts ?? 0) > 20 ? 'var(--amber)' : undefined}
+        tip={`Times the launcher started the bot (VPS reboots + crashes). Last: ${h.restarts.last ?? 'none'}`}
+      />
+      <Pill
+        label="MT5"
+        value={m ? (m.connected ? 'CONNECTED' : 'DISCONNECTED') : '?'}
+        color={m?.connected ? 'var(--green)' : 'var(--red)'}
+        tip={m ? `MetaTrader 5 build ${m.build} · algo trading ${m.trade_allowed ? 'allowed' : 'NOT allowed'}` : 'No MT5 info'}
+      />
+      {m?.ping_ms != null && <Pill label="PING" value={`${Math.round(m.ping_ms)} ms`} tip="Time for a message from the VPS to the broker server and back" />}
+      {m && (
+        <Pill
+          label="DEMO"
+          value={`${m.login} · ${m.balance != null ? usd(m.balance) : '?'}`}
+          tip={`Broker demo account on ${m.server}. Real MT5 balance (the shadow account above is separate). Broker clock ${m.broker_time}${m.broker_time_checked ? '' : ' (not yet confirmed by a live tick)'}.`}
+        />
+      )}
+      {s.cpu_pct != null && <Pill label="CPU" value={`${Math.round(s.cpu_pct)}%`} color={s.cpu_pct > 85 ? 'var(--amber)' : undefined} tip="VPS processor use" />}
+      {ramPct != null && (
+        <Pill
+          label="RAM"
+          value={`${(s.ram_used_mb! / 1024).toFixed(1)} / ${(s.ram_total_mb! / 1024).toFixed(1)} GB`}
+          color={ramPct > 90 ? 'var(--red)' : ramPct > 80 ? 'var(--amber)' : undefined}
+          tip={`VPS memory in use. Bot ${s.bot_ram_mb ?? '?'} MB · MT5 ${s.mt5_ram_mb ?? '?'} MB`}
+        />
+      )}
+      {s.disk_free_gb != null && (
+        <Pill label="DISK FREE" value={`${s.disk_free_gb} GB`} color={s.disk_free_gb < 3 ? 'var(--amber)' : undefined} tip={`Free space on the VPS disk (of ${s.disk_total_gb} GB)`} />
+      )}
+    </div>
+  )
+}
+
+function PriceStrip({ h }: { h: LiveHealth }) {
+  const pairs = Object.entries(h.prices ?? {})
+  if (!pairs.length) return null
+  return (
+    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {pairs.map(([sym, p]) => {
+        const blocked = h.news_blocked?.[sym]
+        const dec = sym.endsWith('JPY') ? 3 : 5
+        const stale = p.tick_age_sec != null && p.tick_age_sec > 600
+        return (
+          <div key={sym} className="border px-2.5 py-1.5" style={{ borderColor: blocked ? 'var(--amber)' : 'var(--line)', background: 'var(--panel2)' }}>
+            <div className="flex items-baseline gap-2 text-[12px]">
+              <b className="font-medium">{sym}</b>
+              <span title="Bid (sell price)">{p.bid.toFixed(dec)}</span>
+              <span className="text-muted">/</span>
+              <span title="Ask (buy price)">{p.ask.toFixed(dec)}</span>
+              <span className="ml-auto text-[11px]" title="Live broker spread (ask - bid) in pips" style={{ color: p.spread_pips > 1.5 ? 'var(--amber)' : 'var(--muted)' }}>
+                SPREAD {p.spread_pips.toFixed(1)}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[10px] text-muted">
+              {stale ? `last tick ${ago(p.tick_age_sec)}` : 'live'}
+              {blocked && <span style={{ color: 'var(--amber)' }}> · NEWS BLOCK: {blocked}</span>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function logColor(line: string) {
+  if (/Traceback|Error|ERROR|WARNING|!!!|failed/.test(line)) return 'var(--red)'
+  if (/FILLED|-> TAKE|CLOSED/.test(line)) return 'var(--green)'
+  if (/FILL-SKIPPED|warning|dikkat/i.test(line)) return 'var(--amber)'
+  if (/=====|feed:|news:|shadow:|state:|risk:/.test(line)) return 'var(--cyan)'
+  return 'var(--muted)'
+}
+
+function BotLog({ lines }: { lines: string[] }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [follow, setFollow] = useState(true)
+  useEffect(() => {
+    if (follow && box.current) box.current.scrollTop = box.current.scrollHeight
+  }, [lines, follow])
+  return (
+    <div className="mt-3">
+      <div className="mb-1 flex items-center gap-2 text-[9px] tracking-[2px] text-muted">
+        <span title="The same lines you would see in the bot window on the VPS">BOT LOG (LAST {lines.length} LINES)</span>
+        <button className="chip" onClick={() => setFollow((f) => !f)} title="Keep the newest line in view">
+          {follow ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
+        </button>
+      </div>
+      <div
+        ref={box}
+        onWheel={() => setFollow(false)}
+        className="h-[240px] overflow-y-auto border px-2 py-1 font-mono text-[11px] leading-snug"
+        style={{ borderColor: 'var(--line)', background: 'rgba(0,0,0,0.45)' }}
+      >
+        {lines.length === 0 && <div className="text-muted">No log yet. It starts with the new bot version.</div>}
+        {lines.map((l, i) => (
+          <div key={i} className="whitespace-pre-wrap break-words" style={{ color: logColor(l) }}>{l}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function LivePanel({ connected }: { connected: boolean }) {
   const [data, setData] = useState<LiveStatus | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -116,13 +249,16 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   }, [connected, tick])
 
   const running = data?.status === 'running'
+  const closedMkt = data?.status === 'market_closed'
   const statusColor = running
     ? 'var(--green)'
-    : data?.status === 'stopped'
-      ? 'var(--amber)'
-      : data?.status === 'unreachable'
-        ? 'var(--red)'
-        : 'var(--muted)'
+    : closedMkt
+      ? 'var(--cyan)'
+      : data?.status === 'stopped'
+        ? 'var(--amber)'
+        : data?.status === 'unreachable'
+          ? 'var(--red)'
+          : 'var(--muted)'
   const unreachable = data?.status === 'unreachable'
   const statusText = !data
     ? 'LOADING'
@@ -132,7 +268,9 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         ? 'NOT STARTED'
         : running
           ? `RUNNING · BOT LAST CHECK ${ago(data.age_sec).toUpperCase()}`
-          : `STOPPED · BOT LAST CHECK ${ago(data.age_sec).toUpperCase()}`
+          : closedMkt
+            ? 'MARKET CLOSED · BOT ONLINE, WAITING'
+            : `STOPPED · BOT LAST CHECK ${ago(data.health?.age_sec ?? data.age_sec).toUpperCase()}`
   const sourceText = data?.source === 'vps' ? 'VPS' : data?.source === 'local' ? 'THIS PC' : null
 
   const header = (
@@ -188,6 +326,9 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   return (
     <div className="panel">
       {header}
+
+      {data.health && <HealthStrip h={data.health} />}
+      {data.health && <PriceStrip h={data.health} />}
 
       {!data.full_state && (
         <div className="mb-2 text-[10px]" style={{ color: 'var(--amber)' }}>
@@ -314,6 +455,8 @@ export default function LivePanel({ connected }: { connected: boolean }) {
           <div className="mt-1 text-[9px] text-muted">Skipped rows should end up worse than TAKEN. Judge only after 100+ trades.</div>
         </div>
       </div>
+
+      <BotLog lines={data.log ?? []} />
     </div>
   )
 }

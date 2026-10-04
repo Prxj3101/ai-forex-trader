@@ -332,8 +332,44 @@ export type LiveDecision = {
 
 export type LiveWhatIf = { decision: string; zones: number; win_pct: number; net_brain: number; net_tp1: number; net_trail: number }
 
+export type LiveHealth = {
+  updated: string
+  started_at: string
+  age_sec: number
+  uptime_sec: number
+  pid: number
+  mt5?: {
+    connected: boolean
+    trade_allowed: boolean
+    ping_ms: number | null
+    build: number | null
+    login: number | null
+    server: string | null
+    balance: number | null
+    equity: number | null
+    currency: string | null
+    broker_time: string
+    broker_time_checked: boolean
+  }
+  prices: Record<string, { bid: number; ask: number; spread_pips: number; tick_age_sec: number | null }>
+  market_open: boolean
+  system: {
+    cpu_pct?: number
+    ram_used_mb?: number
+    ram_total_mb?: number
+    disk_free_gb?: number
+    disk_total_gb?: number
+    bot_ram_mb?: number
+    mt5_ram_mb?: number | null
+  }
+  restarts: { starts: number | null; last: string | null }
+  news_blocked?: Record<string, string | null>
+}
+
 export type LiveStatus = {
-  status: 'running' | 'stopped' | 'none' | 'unreachable'
+  status: 'running' | 'stopped' | 'none' | 'unreachable' | 'market_closed'
+  health?: LiveHealth | null
+  log?: string[]
   source?: 'local' | 'vps'
   error?: string
   updated?: number | null

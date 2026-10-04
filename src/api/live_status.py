@@ -69,7 +69,24 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
     """Shadow bot ka live hisaab: account, khule trades, band trades, decisions, what-if summary."""
     from src.risk.portfolio_sim import RiskConfig, trade_risk_pct, trading_day
 
+    from src.live.monitor import tail_lines
+
     out: dict = {"status": "none"}
+    now = pd.Timestamp.now(tz="UTC")
+
+    # bot ki sehat (src/live/monitor.py, har ~10 s) + bot window ka log
+    health = None
+    hf = live / "health.json"
+    if hf.exists():
+        try:
+            health = json.loads(hf.read_text())
+            health["age_sec"] = round((now - pd.Timestamp(health["updated"])).total_seconds())
+            health["uptime_sec"] = round((now - pd.Timestamp(health["started_at"])).total_seconds())
+        except Exception:  # noqa: BLE001 - file likhi ja rahi ho
+            health = None
+    out["health"] = health
+    out["log"] = tail_lines(live / "bot.log", 150)
+
     sf = live / "shadow_state.json"
     if not sf.exists():
         return out
@@ -77,10 +94,17 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
         st = json.loads(sf.read_text())
     except Exception:  # noqa: BLE001 - file likhi ja rahi ho
         return out
-    now = pd.Timestamp.now(tz="UTC")
     updated = pd.Timestamp(st.get("updated")) if st.get("updated") else None
     age = (now - updated).total_seconds() if updated is not None else None
     out["status"] = "running" if age is not None and age <= 600 else "stopped"
+    if health is not None:
+        # health har ~10 s likhi jaati hai -> bot process zinda hai ya nahi, ye isse pakka pata chalta hai
+        if health["age_sec"] > 120:
+            out["status"] = "stopped"
+        elif not health.get("market_open"):
+            out["status"] = "market_closed"
+        else:
+            out["status"] = "running"
     out["updated"] = to_unix(updated) if updated is not None else None
     out["age_sec"] = round(age) if age is not None else None
     out["full_state"] = st.get("version") == 2

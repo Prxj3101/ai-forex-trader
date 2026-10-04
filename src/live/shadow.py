@@ -426,7 +426,10 @@ def reset_state(out: Path = LIVE):
 
 
 def run_live(poll_s: int = 10):
+    from src.live import monitor
     from src.live.feeds import MT5Feed
+    monitor.start_log(LIVE)                      # bot window ka sab kuch data/live/bot.log mein bhi (dashboard ke liye)
+    started_at = pd.Timestamp.now(tz="UTC")
     feed = MT5Feed(HISTORY_DAYS)
     guard = None
     if config.profile().get("news_rules") or config.NEWS_BLOCK:
@@ -458,6 +461,7 @@ def run_live(poll_s: int = 10):
                     print(f"{pd.Timestamp.now(tz=NY):%H:%M:%S} NY  {s} checked ({time.time() - t0:.1f}s) | "
                           f"equity ${eng.equity:,.2f} | open {len(eng.open)} | armed {len(eng.armed.get(s, []))}")
                     eng.save()
+            monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / prices / VPS sehat
             time.sleep(poll_s)
     except KeyboardInterrupt:
         eng.save()
