@@ -24,6 +24,8 @@ Agreed 3 Oct 2026:
 3. Weekend after week 1: review shadow data; ACTIVITY FILTER fix (MT5 tick volume vs Dukascopy act_15m, threshold per feed); check spread floor working (spread_live vs spread_used in decisions.csv).
 4. Week 2: shadow + demo orders side by side (compare fills / slippage). Decide before this: switch to a raw-spread broker demo instead of MetaQuotes (realistic spread / fills / tick volume).
 5. Week 3+: demo orders only, 2-3 months paper trading. Later: months 2-3 VPS move to Time4VPS / IONOS when Azure credit ends.
+DEMO BROKER (3 Oct, recommended, waiting for his confirmation): Exness MT5 RAW SPREAD demo (spread ~0.0-0.1, $2.5/side = $5 RT = matches BROKER_COMMISSION and ML training cost; free, no deposit; deleted only after ~21-30 days without login, bot logs in daily). Use it from week 1 on the VPS instead of MetaQuotes (so tick volume / spread data is realistic from day 1). Alternative IC Markets Raw demo ($7 RT; demo-only accounts may expire after 30 days). Demo = no money moves = no FEMA issue; never deposit (Exness is on RBI Alert List).
+VPS PREP DONE (4 Oct): .gitignore rewritten (data/ ignored EXCEPT data/research/ml_walkforward.json, so it goes to GitHub; models/ was never ignored -> zone_brain/exit_brain go via git; old glued line gone); requirements.txt += MetaTrader5 (unpinned).
 Open items: tune news block window from demo slippage data; Funding Pips EA approval before any bot use there; set BROKER_COMMISSION per account (FP 5, The5ers 4, Exness Raw 5); avoid Standard accounts.
 
 ## Things already agreed / said honestly

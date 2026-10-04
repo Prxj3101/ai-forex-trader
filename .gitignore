@@ -1,5 +1,8 @@
 /.venv/
-/data/
+/data/*
+!/data/research/
+/data/research/*
+!/data/research/ml_walkforward.json
 .env
 __pycache__/
 *.pyc

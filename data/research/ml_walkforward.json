@@ -1,0 +1,599 @@
+{
+  "summary": [
+    {
+      "keep": 1.0,
+      "trades": 64494,
+      "win_pct": 44.0,
+      "pf_trail": 0.823,
+      "pf_1to1": 0.798,
+      "pf_1to2": 0.775,
+      "total_r": -6578.2,
+      "avg_r": -0.102,
+      "losing_years": 8
+    },
+    {
+      "keep": 0.7,
+      "trades": 42559,
+      "win_pct": 47.0,
+      "pf_trail": 0.924,
+      "pf_1to1": 0.93,
+      "pf_1to2": 0.861,
+      "total_r": -1697.6,
+      "avg_r": -0.04,
+      "losing_years": 6
+    },
+    {
+      "keep": 0.5,
+      "trades": 29360,
+      "win_pct": 48.5,
+      "pf_trail": 0.985,
+      "pf_1to1": 0.989,
+      "pf_1to2": 0.9,
+      "total_r": -222.7,
+      "avg_r": -0.008,
+      "losing_years": 4
+    },
+    {
+      "keep": 0.3,
+      "trades": 16886,
+      "win_pct": 50.0,
+      "pf_trail": 1.069,
+      "pf_1to1": 1.057,
+      "pf_1to2": 0.944,
+      "total_r": 571.9,
+      "avg_r": 0.034,
+      "losing_years": 2
+    }
+  ],
+  "by_year": [
+    {
+      "keep": 1.0,
+      "year": 2019,
+      "trades": 8386,
+      "pf": 0.821,
+      "total_r": -867.9
+    },
+    {
+      "keep": 1.0,
+      "year": 2020,
+      "trades": 8311,
+      "pf": 0.739,
+      "total_r": -1251.1
+    },
+    {
+      "keep": 1.0,
+      "year": 2021,
+      "trades": 8478,
+      "pf": 0.759,
+      "total_r": -1190.4
+    },
+    {
+      "keep": 1.0,
+      "year": 2022,
+      "trades": 8088,
+      "pf": 0.894,
+      "total_r": -470.3
+    },
+    {
+      "keep": 1.0,
+      "year": 2023,
+      "trades": 8536,
+      "pf": 0.866,
+      "total_r": -648.5
+    },
+    {
+      "keep": 1.0,
+      "year": 2024,
+      "trades": 8248,
+      "pf": 0.798,
+      "total_r": -995.2
+    },
+    {
+      "keep": 1.0,
+      "year": 2025,
+      "trades": 8282,
+      "pf": 0.893,
+      "total_r": -495.5
+    },
+    {
+      "keep": 1.0,
+      "year": 2026,
+      "trades": 6165,
+      "pf": 0.819,
+      "total_r": -659.2
+    },
+    {
+      "keep": 0.7,
+      "year": 2019,
+      "trades": 4588,
+      "pf": 0.952,
+      "total_r": -114.3
+    },
+    {
+      "keep": 0.7,
+      "year": 2020,
+      "trades": 5661,
+      "pf": 0.809,
+      "total_r": -576.8
+    },
+    {
+      "keep": 0.7,
+      "year": 2021,
+      "trades": 5467,
+      "pf": 0.862,
+      "total_r": -391.8
+    },
+    {
+      "keep": 0.7,
+      "year": 2022,
+      "trades": 5990,
+      "pf": 1.021,
+      "total_r": 63.8
+    },
+    {
+      "keep": 0.7,
+      "year": 2023,
+      "trades": 5962,
+      "pf": 0.924,
+      "total_r": -240.6
+    },
+    {
+      "keep": 0.7,
+      "year": 2024,
+      "trades": 5288,
+      "pf": 0.909,
+      "total_r": -266.3
+    },
+    {
+      "keep": 0.7,
+      "year": 2025,
+      "trades": 5836,
+      "pf": 1.0,
+      "total_r": 1.4
+    },
+    {
+      "keep": 0.7,
+      "year": 2026,
+      "trades": 3767,
+      "pf": 0.915,
+      "total_r": -173.0
+    },
+    {
+      "keep": 0.5,
+      "year": 2019,
+      "trades": 2938,
+      "pf": 1.026,
+      "total_r": 38.1
+    },
+    {
+      "keep": 0.5,
+      "year": 2020,
+      "trades": 4039,
+      "pf": 0.859,
+      "total_r": -291.8
+    },
+    {
+      "keep": 0.5,
+      "year": 2021,
+      "trades": 3716,
+      "pf": 0.953,
+      "total_r": -85.9
+    },
+    {
+      "keep": 0.5,
+      "year": 2022,
+      "trades": 4323,
+      "pf": 1.088,
+      "total_r": 184.2
+    },
+    {
+      "keep": 0.5,
+      "year": 2023,
+      "trades": 4232,
+      "pf": 1.01,
+      "total_r": 22.6
+    },
+    {
+      "keep": 0.5,
+      "year": 2024,
+      "trades": 3543,
+      "pf": 0.97,
+      "total_r": -57.1
+    },
+    {
+      "keep": 0.5,
+      "year": 2025,
+      "trades": 4053,
+      "pf": 1.024,
+      "total_r": 49.2
+    },
+    {
+      "keep": 0.5,
+      "year": 2026,
+      "trades": 2516,
+      "pf": 0.938,
+      "total_r": -81.9
+    },
+    {
+      "keep": 0.3,
+      "year": 2019,
+      "trades": 1468,
+      "pf": 1.182,
+      "total_r": 119.4
+    },
+    {
+      "keep": 0.3,
+      "year": 2020,
+      "trades": 2428,
+      "pf": 0.917,
+      "total_r": -100.2
+    },
+    {
+      "keep": 0.3,
+      "year": 2021,
+      "trades": 2029,
+      "pf": 0.993,
+      "total_r": -6.6
+    },
+    {
+      "keep": 0.3,
+      "year": 2022,
+      "trades": 2598,
+      "pf": 1.186,
+      "total_r": 228.1
+    },
+    {
+      "keep": 0.3,
+      "year": 2023,
+      "trades": 2535,
+      "pf": 1.089,
+      "total_r": 113.0
+    },
+    {
+      "keep": 0.3,
+      "year": 2024,
+      "trades": 2043,
+      "pf": 1.047,
+      "total_r": 50.9
+    },
+    {
+      "keep": 0.3,
+      "year": 2025,
+      "trades": 2386,
+      "pf": 1.137,
+      "total_r": 158.6
+    },
+    {
+      "keep": 0.3,
+      "year": 2026,
+      "trades": 1399,
+      "pf": 1.012,
+      "total_r": 8.7
+    }
+  ],
+  "by_symbol": [
+    {
+      "keep": 1.0,
+      "symbol": "EURUSD",
+      "trades": 28490,
+      "pf": 0.84,
+      "total_r": -2584.2
+    },
+    {
+      "keep": 1.0,
+      "symbol": "GBPUSD",
+      "trades": 9084,
+      "pf": 0.807,
+      "total_r": -994.0
+    },
+    {
+      "keep": 1.0,
+      "symbol": "USDJPY",
+      "trades": 26920,
+      "pf": 0.809,
+      "total_r": -3000.0
+    },
+    {
+      "keep": 0.7,
+      "symbol": "EURUSD",
+      "trades": 18808,
+      "pf": 0.957,
+      "total_r": -419.7
+    },
+    {
+      "keep": 0.7,
+      "symbol": "GBPUSD",
+      "trades": 6352,
+      "pf": 0.869,
+      "total_r": -442.7
+    },
+    {
+      "keep": 0.7,
+      "symbol": "USDJPY",
+      "trades": 17399,
+      "pf": 0.91,
+      "total_r": -835.2
+    },
+    {
+      "keep": 0.5,
+      "symbol": "EURUSD",
+      "trades": 13051,
+      "pf": 1.007,
+      "total_r": 44.9
+    },
+    {
+      "keep": 0.5,
+      "symbol": "GBPUSD",
+      "trades": 4497,
+      "pf": 0.932,
+      "total_r": -157.5
+    },
+    {
+      "keep": 0.5,
+      "symbol": "USDJPY",
+      "trades": 11812,
+      "pf": 0.982,
+      "total_r": -110.2
+    },
+    {
+      "keep": 0.3,
+      "symbol": "EURUSD",
+      "trades": 7567,
+      "pf": 1.042,
+      "total_r": 157.3
+    },
+    {
+      "keep": 0.3,
+      "symbol": "GBPUSD",
+      "trades": 2570,
+      "pf": 1.025,
+      "total_r": 31.9
+    },
+    {
+      "keep": 0.3,
+      "symbol": "USDJPY",
+      "trades": 6749,
+      "pf": 1.117,
+      "total_r": 382.7
+    }
+  ],
+  "score_buckets": [
+    {
+      "bucket": "lowest 20%",
+      "trades": 12899,
+      "avg_score": 0.348,
+      "real_win_pct": 35.6,
+      "pf": 0.622
+    },
+    {
+      "bucket": "20-40%",
+      "trades": 12899,
+      "avg_score": 0.418,
+      "real_win_pct": 42.1,
+      "pf": 0.767
+    },
+    {
+      "bucket": "40-60%",
+      "trades": 12898,
+      "avg_score": 0.449,
+      "real_win_pct": 44.7,
+      "pf": 0.817
+    },
+    {
+      "bucket": "60-80%",
+      "trades": 12899,
+      "avg_score": 0.478,
+      "real_win_pct": 46.6,
+      "pf": 0.915
+    },
+    {
+      "bucket": "top 20%",
+      "trades": 12899,
+      "avg_score": 0.526,
+      "real_win_pct": 50.9,
+      "pf": 1.1
+    }
+  ],
+  "exits": [
+    {
+      "exit": "trail",
+      "label": "Always trailing",
+      "trades": 7646,
+      "pf": 1.174,
+      "total_r": 624.2,
+      "max_dd_r": 77.9,
+      "losing_years": 2
+    },
+    {
+      "exit": "tp1",
+      "label": "Always 1:1",
+      "trades": 7646,
+      "pf": 1.15,
+      "total_r": 530.6,
+      "max_dd_r": 44.6,
+      "losing_years": 1
+    },
+    {
+      "exit": "rule",
+      "label": "Smart rule (slow approach = 1:1)",
+      "trades": 7646,
+      "pf": 1.196,
+      "total_r": 699.5,
+      "max_dd_r": 69.7,
+      "losing_years": 1
+    },
+    {
+      "exit": "ml",
+      "label": "ML exit model",
+      "trades": 7646,
+      "pf": 1.31,
+      "total_r": 1100.9,
+      "max_dd_r": 29.9,
+      "losing_years": 0
+    }
+  ],
+  "bot": {
+    "label": "M15 first touch + ML top 30% + value area filter + activity filter + exit brain",
+    "trades": 7646,
+    "win_pct": 57.3,
+    "pf": 1.31,
+    "total_r": 1100.9,
+    "avg_r": 0.144,
+    "max_dd_r": 29.9,
+    "losing_years": 0,
+    "trail_share_pct": 23.6,
+    "by_year": {
+      "2019": 138.8,
+      "2020": 70.7,
+      "2021": 107.0,
+      "2022": 245.4,
+      "2023": 169.7,
+      "2024": 112.0,
+      "2025": 163.6,
+      "2026": 93.7
+    },
+    "by_symbol": {
+      "EURUSD": {
+        "trades": 3480,
+        "pf": 1.293,
+        "total_r": 476.9
+      },
+      "GBPUSD": {
+        "trades": 1236,
+        "pf": 1.336,
+        "total_r": 189.5
+      },
+      "USDJPY": {
+        "trades": 2930,
+        "pf": 1.321,
+        "total_r": 434.5
+      }
+    }
+  },
+  "va_filter": {
+    "on": true,
+    "max_pos": 0.81,
+    "removed": 1475,
+    "pf_without": 1.235,
+    "trades_without": 11090
+  },
+  "act_filter": {
+    "on": true,
+    "min_act": 0.9,
+    "removed": 1969,
+    "pf_without": 1.263,
+    "trades_without": 9615
+  },
+  "final_thresholds": {
+    "0.7": 0.42635694153998027,
+    "0.5": 0.452175705527939,
+    "0.3": 0.4759596611174767
+  },
+  "symbols": [
+    "EURUSD",
+    "USDJPY",
+    "GBPUSD"
+  ],
+  "features": [
+    "disp_atr",
+    "bars_ob_to_bos",
+    "disp_h1",
+    "disp_h4",
+    "break_margin_atr",
+    "zone_height_atr",
+    "pullback_atr",
+    "spread_atr",
+    "spread_r",
+    "risk_atr",
+    "range_pos_h4",
+    "range_pos_d1",
+    "bars_since_created",
+    "touch_number",
+    "fill_hour_ny",
+    "fill_weekday",
+    "hour_ny",
+    "weekday",
+    "impulse_candles",
+    "impulse_body_pct",
+    "disp_d1",
+    "followthrough_atr",
+    "trend_tf_aligned",
+    "trend_h1_aligned",
+    "approach_1h_atr",
+    "approach_3h_atr",
+    "approach_push",
+    "cost_r",
+    "sl_pips",
+    "has_fvg",
+    "h1_flow_aligned",
+    "h1_confluence",
+    "sweep_6h",
+    "sweep_24h",
+    "sweep_asia",
+    "sweep_prev_day",
+    "pd_aligned_h4",
+    "pd_aligned_d1",
+    "bias_h4_aligned",
+    "bias_d1_aligned",
+    "symbol",
+    "direction",
+    "zone_tf",
+    "killzone",
+    "session_fill",
+    "session_created"
+  ],
+  "importance": {
+    "spread_r": 11.5,
+    "cost_r": 9.5,
+    "followthrough_atr": 6.3,
+    "touch_number": 5.8,
+    "approach_1h_atr": 5.5,
+    "spread_atr": 4.9,
+    "risk_atr": 4.3,
+    "bars_since_created": 4.0,
+    "fill_hour_ny": 3.9,
+    "sl_pips": 3.9,
+    "range_pos_d1": 3.4,
+    "disp_d1": 3.2,
+    "approach_3h_atr": 2.9,
+    "impulse_body_pct": 2.5,
+    "zone_height_atr": 2.4,
+    "approach_push": 2.3,
+    "range_pos_h4": 2.3,
+    "disp_h1": 2.1,
+    "break_margin_atr": 2.1,
+    "pullback_atr": 2.1,
+    "session_fill": 2.0,
+    "disp_atr": 1.6,
+    "disp_h4": 1.5,
+    "trend_tf_aligned": 1.3,
+    "killzone": 1.3,
+    "hour_ny": 1.1,
+    "session_created": 1.0,
+    "fill_weekday": 0.9,
+    "weekday": 0.6,
+    "symbol": 0.5,
+    "trend_h1_aligned": 0.4,
+    "h1_confluence": 0.4,
+    "impulse_candles": 0.3,
+    "bars_ob_to_bos": 0.3,
+    "h1_flow_aligned": 0.3,
+    "zone_tf": 0.2,
+    "sweep_asia": 0.2,
+    "bias_d1_aligned": 0.2,
+    "bias_h4_aligned": 0.2,
+    "sweep_prev_day": 0.2,
+    "pd_aligned_h4": 0.1,
+    "sweep_6h": 0.1,
+    "direction": 0.1,
+    "has_fvg": 0.1,
+    "pd_aligned_d1": 0.0,
+    "sweep_24h": 0.0
+  },
+  "n_trades": 90221,
+  "commission": 5.0,
+  "slippage_pips": 0.2,
+  "results_are": "net of costs",
+  "first_test_year": 2019,
+  "trained_at": "2026-10-02T19:53:13.326522+00:00"
+}
