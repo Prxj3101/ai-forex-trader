@@ -221,6 +221,9 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
     const exitTag = (exit: string | null | undefined) => (exit === 'trail' ? 'TRAIL' : exit === 'tp1' ? '1:1' : '')
     const slLabel = (exit: string | null | undefined) => (exitTag(exit) ? `SL · ${exitTag(exit)}` : 'SL')
     const pnlOf = (t: (typeof data.open)[number]) => (px ? floatPnl({ ...t, symbol }, px.bid, px.ask) : null)
+    // TP: bot ka diya hua (1:1) ya entry +/- 1R (trail trade / purana state jismein tp nahi)
+    const tpOf = (t: (typeof data.open)[number]) =>
+      t.tp ?? t.entry + (t.direction === 'bull' ? 1 : -1) * Math.abs(t.entry - t.sl)
     const segs: Segment[] = []
     for (const t of data.open) {
       if (!t.fill_time) continue
@@ -232,7 +235,13 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
         labelColor: p ? (p.usd >= 0 ? GREEN : RED) : undefined,
       })
       segs.push({ t1: t.fill_time, t2: null, price: t.sl, color: RED, dash: true, label: slLabel(t.exit) })
-      if (t.tp != null) segs.push({ t1: t.fill_time, t2: null, price: t.tp, color: GREEN, dash: true, label: 'TP 1:1' })
+      // TP line hamesha: 1:1 trade = asli target; TRAIL trade = +1R pe trailing shuru hota hai (fixed target nahi)
+      const tpPx = tpOf(t)
+      const atTp = floatPnl({ ...t, symbol }, tpPx, tpPx)
+      segs.push({
+        t1: t.fill_time, t2: null, price: tpPx, color: GREEN, dash: true,
+        label: `${t.exit === 'trail' ? 'TP +1R · TRAIL STARTS' : 'TP 1:1'} ${tpPx.toFixed(digitsOf(symbol))} (${fmtUsd(atTp.usd)})`,
+      })
       if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) {
         segs.push({ t1: t.fill_time, t2: null, price: t.stop_now, color: AMBER, width: 2, label: `TRAIL SL (best +${(t.best_r ?? 0).toFixed(1)}R)` })
       }
@@ -261,7 +270,7 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
       const p = pnlOf(t)
       tag(t.entry, p ? (p.usd >= 0 ? GREEN : RED) : CYAN, p ? `ENTRY ${fmtUsd(p.usd)}` : 'ENTRY')
       tag(t.sl, RED, exitTag(t.exit) ? `SL ${exitTag(t.exit)}` : 'SL')
-      if (t.tp != null) tag(t.tp, GREEN, 'TP')
+      tag(tpOf(t), GREEN, t.exit === 'trail' ? 'TP +1R' : 'TP')
       if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) tag(t.stop_now, AMBER, 'TRAIL')
     }
   }, [data, symbol, tf, px])
