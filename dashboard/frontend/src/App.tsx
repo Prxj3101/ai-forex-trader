@@ -17,7 +17,32 @@ import { agentStates } from './lib/agents'
 import { api, type AgentEvent, type AgentId, type BotConfig, type MLReport, type RiskReport, type ScanResult } from './lib/api'
 import { useEvents, useNow } from './lib/hooks'
 
+// Do tabs: LIVE (roz dekhna) aur RESEARCH (backtest / history / ML). Last chuna hua tab browser yaad rakhta hai.
+type Tab = 'live' | 'research'
+const TABS: { id: Tab; label: string; tip: string }[] = [
+  { id: 'live', label: 'LIVE', tip: 'What the bot is doing right now on the VPS (broker feed)' },
+  { id: 'research', label: 'RESEARCH', tip: 'History chart, ML brain, backtest account and research (downloaded data, not live)' },
+]
+const TAB_KEY = 'dashboard_tab'
+
+function savedTab(): Tab {
+  try {
+    return localStorage.getItem(TAB_KEY) === 'research' ? 'research' : 'live'
+  } catch {
+    return 'live'
+  }
+}
+
 export default function App() {
+  const [tab, setTab] = useState<Tab>(savedTab)
+  const changeTab = useCallback((t: Tab) => {
+    setTab(t)
+    try {
+      localStorage.setItem(TAB_KEY, t)
+    } catch {
+      // storage band ho toh bas yaad nahi rahega
+    }
+  }, [])
   const [symbols, setSymbols] = useState<Record<string, string[]>>({})
   const [localEvents, setLocalEvents] = useState<AgentEvent[]>([])
   const [settings, setSettings] = useState<ChartSettings>({
@@ -137,41 +162,68 @@ export default function App() {
       <Boot />
 
       <div className="relative z-[1] flex flex-col gap-2.5 p-3">
-        <Header pair={settings.symbol || '---'} connected={connected} dataOk={Object.keys(symbols).length > 0} mlOk={!!mlReport} />
+        <Header
+          pair={settings.symbol || '---'}
+          connected={connected}
+          dataOk={Object.keys(symbols).length > 0}
+          mlOk={!!mlReport}
+          tabs={
+            <div className="flex items-center gap-1.5">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  className={`chip px-4 py-1.5 text-[12px] tracking-[3px] ${tab === t.id ? 'on' : ''}`}
+                  onClick={() => changeTab(t.id)}
+                  title={t.tip}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          }
+        />
         <Ticker symbols={Object.keys(symbols)} />
 
-        <div className="grid gap-2.5 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
-          <AgentsPanel states={states} />
-          <ChartPanel symbols={symbols} settings={settings} onChange={onSettings} onLog={onLog} mlKey={mlKey} botDisp={botDisp} />
-          <MLBrain report={mlReport} training={mlTraining} onTrain={onTrain} connected={connected} />
-        </div>
+        {tab === 'live' ? (
+          <>
+            <LivePanel connected={connected} />
+            <div className="grid gap-2.5 xl:grid-cols-[300px_minmax(0,1fr)]">
+              <SessionRadar />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid gap-2.5 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
+              <AgentsPanel states={states} />
+              <ChartPanel symbols={symbols} settings={settings} onChange={onSettings} onLog={onLog} mlKey={mlKey} botDisp={botDisp} />
+              <MLBrain report={mlReport} training={mlTraining} onTrain={onTrain} connected={connected} />
+            </div>
 
-        <LivePanel connected={connected} />
+            <AccountPanel report={riskReport} />
 
-        <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.3fr)_280px_minmax(0,1fr)]">
-          <TradeLog events={events} />
-          <SessionRadar />
-          <ScanPanel
-            symbol={settings.symbol}
-            tf={settings.tf}
-            swingN={settings.swingN}
-            minDisp={settings.minDisp}
-            result={lastResult}
-            running={scanRunning}
-          />
-        </div>
+            <ResearchPanel
+              symbols={symbols}
+              defaultSymbol={settings.symbol || 'USDJPY'}
+              refreshKey={researchKey}
+              building={researchBuilding}
+              coreSymbols={botCfg?.core_symbols ?? ['EURUSD', 'USDJPY', 'GBPUSD']}
+            />
 
-        <AccountPanel report={riskReport} />
+            <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+              <TradeLog events={events} />
+              <ScanPanel
+                symbol={settings.symbol}
+                tf={settings.tf}
+                swingN={settings.swingN}
+                minDisp={settings.minDisp}
+                result={lastResult}
+                running={scanRunning}
+              />
+            </div>
 
-        <ResearchPanel
-          symbols={symbols}
-          defaultSymbol={settings.symbol || 'USDJPY'}
-          refreshKey={researchKey}
-          building={researchBuilding}
-          coreSymbols={botCfg?.core_symbols ?? ['EURUSD', 'USDJPY', 'GBPUSD']}
-        />
-
-        <Pipeline states={states} />
+            <Pipeline states={states} />
+          </>
+        )}
 
         {!connected && (
           <div className="text-center text-[11px] tracking-[2px]" style={{ color: 'var(--red)' }}>

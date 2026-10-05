@@ -80,6 +80,7 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
     except Exception:  # noqa: BLE001 - file likhi ja rahi ho
         return out
     bars = list(raw.get("bars") or [])
+    m5 = None
     # chal rahi candle (health.json, har ~5 s) jodo -> chart live hilta hai
     hf = live / "health.json"
     if bars and hf.exists():
@@ -94,6 +95,7 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
         d = pd.DataFrame(bars, columns=["t", "open", "high", "low", "close"])
         d.index = pd.to_datetime(d["t"], unit="s", utc=True)
         d = d[~d.index.duplicated(keep="last")].sort_index().dropna()
+        m5 = d
         if tf != "M5":
             # trading clock (NY 5 PM = din ka shuru) jaisa hi: M15 / H1 boundaries UTC pe bhi same hote hain
             d = d.resample(TF_RULE[tf], label="left", closed="left").agg(
@@ -109,9 +111,11 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
         except Exception:  # noqa: BLE001
             pass
     sf = live / "shadow_state.json"
+    open_raw: list[dict] = []
     if sf.exists():
         try:
             st = json.loads(sf.read_text())
+            open_raw = [t for t in st.get("open_trades", []) if t.get("symbol") == symbol]
             out["open"] = [{"direction": t.get("direction"), "entry": clean(t.get("entry")), "sl": clean(t.get("sl")),
                             "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")), "best_r": clean(t.get("best_r")),
                             "exit": t.get("exit"), "lots": clean(t.get("lots")), "r_now": clean(t.get("r_now")),
@@ -120,10 +124,12 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
         except Exception:  # noqa: BLE001
             pass
     ct = live / "closed_trades.csv"
+    closed_raw: list[dict] = []
     if ct.exists():
         try:
             c = pd.read_csv(ct)
             c = c[c["symbol"] == symbol].tail(30)
+            closed_raw = c.to_dict("records")
             out["trades"] = [{"direction": r.direction, "entry": clean(r.entry), "sl": clean(r.sl), "exit": r.exit,
                               "r": clean(r.r), "exit_reason": r.exit_reason, "pnl": clean(r.pnl),
                               "fill_ts": to_unix(pd.Timestamp(r.fill_time)), "exit_ts": to_unix(pd.Timestamp(r.exit_time))}
@@ -143,7 +149,39 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
             out["traded_zones"] = []
     else:
         out["traded_zones"] = []
+    # backup: jis trade ka zone box save nahi hua (purane trades / file missing) -> zone candle se dobara banao
+    try:
+        have = {z.get("fill_time") for z in out["traded_zones"]}
+        exits = {t["fill_ts"]: t["exit_ts"] for t in out["trades"]}
+        for t in [*open_raw, *closed_raw]:
+            if not t.get("fill_time") or not t.get("zone") or pd.isna(t.get("zone")):
+                continue
+            fts = to_unix(pd.Timestamp(t["fill_time"]))
+            if fts in have:
+                continue
+            z = _zone_from_candle(m5, pd.Timestamp(t["zone"]), t)
+            if z:
+                out["traded_zones"].append(dict(z, fill_time=fts, exit_ts=exits.get(fts)))
+                have.add(fts)
+    except Exception:  # noqa: BLE001
+        pass
     return out
+
+
+def _zone_from_candle(m5, zt: pd.Timestamp, t: dict) -> dict | None:
+    """Zone box = M15 zone candle ka wick (top/bottom) + body. Candle chart data mein na ho toh entry..SL ka box."""
+    zt = zt.tz_localize("UTC") if zt.tzinfo is None else zt.tz_convert("UTC")
+    bull = t.get("direction") == "bull"
+    entry, sl = float(t["entry"]), float(t["sl"])
+    z = {"direction": t.get("direction"), "zone_candle_time": to_unix(zt), "created_at": to_unix(zt),
+         "disp_atr": None, "has_fvg": False}
+    w = m5.loc[(m5.index >= zt) & (m5.index < zt + pd.Timedelta(minutes=15))] if m5 is not None else None
+    if w is not None and len(w):
+        o, c = float(w["open"].iloc[0]), float(w["close"].iloc[-1])
+        return dict(z, top=float(w["high"].max()), bottom=float(w["low"].min()),
+                    body_top=max(o, c), body_bottom=min(o, c))
+    return dict(z, top=max(entry, sl), bottom=min(entry, sl),
+                body_top=entry if bull else max(entry, sl), body_bottom=min(entry, sl) if bull else entry)
 
 
 def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
