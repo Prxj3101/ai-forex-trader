@@ -459,7 +459,7 @@ def _remote_cfg() -> dict | None:
     return cfg if cfg.get("url") and cfg.get("token") else None
 
 
-def _remote_get(remote: dict, path: str, params: dict) -> dict:
+def _remote_get(remote: dict, path: str, params: dict, timeout: float = 10) -> dict:
     """VPS ke live_api se JSON lao. Gadbad ho toh {"status": "unreachable", ...}."""
     import urllib.error
     import urllib.parse
@@ -467,7 +467,7 @@ def _remote_get(remote: dict, path: str, params: dict) -> dict:
     url = remote["url"].rstrip("/") + path + "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"X-Live-Token": remote["token"]})
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode()) | {"source": "vps"}
     except urllib.error.HTTPError as e:
         msg = "VPS rejected the token (check data/live_remote.json)" if e.code == 401 else f"VPS error {e.code}"
@@ -486,6 +486,16 @@ def live_chart(symbol: str = "EURUSD", tf: str = "M15"):
     if remote is None:
         return ls.build_chart(LIVE, symbol.upper(), tf) | {"source": "local"}
     return _remote_get(remote, "/api/live/chart", {"symbol": symbol.upper(), "tf": tf})
+
+
+@app.get("/api/live/ticks")
+def live_ticks():
+    """Halka live data (har 1 s): bid/ask, forming candle, khule trades -> live P&L + chalti candle."""
+    from src.api import live_status as ls
+    remote = _remote_cfg()
+    if remote is None:
+        return ls.build_ticks(LIVE) | {"source": "local"}
+    return _remote_get(remote, "/api/live/ticks", {}, timeout=4)
 
 
 @app.get("/api/live")

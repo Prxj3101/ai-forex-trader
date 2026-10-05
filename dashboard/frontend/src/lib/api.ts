@@ -397,6 +397,34 @@ export type LiveWatch = {
   symbols: Record<string, { bar_time: number; zones: LiveWatchZone[] }>
 }
 
+// Halka live data (har ~1 s): bid/ask, chal rahi M5 candle, khule trades -> live P&L
+export type LiveTicks = {
+  status?: string
+  error?: string
+  updated: string | null
+  age_sec: number | null
+  prices: Record<string, { bid: number; ask: number; spread_pips: number; tick_age_sec?: number | null }>
+  forming: Record<string, [number, number, number, number, number]>
+  open: LiveTickTrade[]
+}
+
+export type LiveTickTrade = {
+  symbol: string
+  direction: 'bull' | 'bear'
+  entry: number
+  sl: number
+  lots: number
+  fill_time: number | null
+  filled_at?: number | null
+  exit?: string
+  sl_pips?: number | null
+  score?: number | null
+  tp?: number | null
+  stop_now?: number | null
+  best_r?: number | null
+  r_now?: number | null
+}
+
 export type LiveChart = {
   symbol: string
   tf: string
@@ -495,6 +523,7 @@ export const api = {
   config: () => request<BotConfig>('/api/config'),
   live: () => request<LiveStatus>('/api/live'),
   liveChart: (symbol: string, tf: string) => request<LiveChart>('/api/live/chart', { symbol, tf }),
+  liveTicks: () => request<LiveTicks>('/api/live/ticks'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>
     request<ResearchV2Report>('/api/research/v2/report', {

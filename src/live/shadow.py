@@ -264,23 +264,69 @@ class ShadowEngine:
                 continue
             b = m5.loc[o["bar_time"]]
             filled = (b["low"] + b["spread"] <= o["entry"]) if o["bull"] else (b["high"] >= o["entry"])
-            if filled and (len(self.open) >= self.cfg.max_open or any(t["symbol"] == symbol for t in self.open)
-                           or sum(t["usd_side"] == o["usd_side"] for t in self.open) >= self.cfg.max_usd_same_side):
-                self._log_decision(symbol, o, "FILL-SKIPPED", "limit reached at fill (another order filled first)")
-                continue
             if filled:
-                d = self._day(o["bar_time"])
-                why = daily_ok(self.cfg, self.day_start[d], self.day_pnl.get(d, 0.0), self._open_risk(),
-                               o["risk_usd"] + self.cfg.commission_per_lot * o["lots"])
-                if why:
-                    self._log_decision(symbol, o, "FILL-SKIPPED", why)
-                    continue
-                t = dict(o, status="open", fill_time=o["bar_time"])
-                self.open.append(t)
-                self._remember_traded_zone(t)
-                self.filled_now.add((symbol, str(o["zone"]), o["bar_time"]))
-                self._log_decision(symbol, o, "FILLED", f"lots {o['lots']}, exit {o['exit']}")
+                self._fill(symbol, o, "candle")
         self.armed[symbol] = keep
+
+    def _fill(self, symbol, o, how: str) -> bool:
+        """Armed limit order fill: risk limits dobara check -> khula shadow trade. how = 'tick' (live, turant) / 'candle'."""
+        if (len(self.open) >= self.cfg.max_open or any(t["symbol"] == symbol for t in self.open)
+                or sum(t["usd_side"] == o["usd_side"] for t in self.open) >= self.cfg.max_usd_same_side):
+            self._log_decision(symbol, o, "FILL-SKIPPED", "limit reached at fill (another order filled first)")
+            return False
+        d = self._day(o["bar_time"])
+        why = daily_ok(self.cfg, self.day_start[d], self.day_pnl.get(d, 0.0), self._open_risk(),
+                       o["risk_usd"] + self.cfg.commission_per_lot * o["lots"])
+        if why:
+            self._log_decision(symbol, o, "FILL-SKIPPED", why)
+            return False
+        now = pd.Timestamp.now(tz="UTC")
+        # fill_time = candle ka time (exit logic backtest jaisa usi candle se); filled_at = asli ghadi ka time
+        t = dict(o, status="open", fill_time=o["bar_time"], r_now=0.0,
+                 filled_at=(now if how == "tick" else o["bar_time"] + pd.Timedelta(minutes=5)).isoformat(timespec="seconds"))
+        t.update(_live_levels(t, [], [], []))                 # chart: TP + SL turant (candle band hone se pehle)
+        self.open.append(t)
+        self._remember_traded_zone(t)
+        self.filled_now.add((symbol, str(o["zone"]), o["bar_time"]))
+        self._log_decision(symbol, o, "FILLED", f"lots {o['lots']}, exit {o['exit']}"
+                           + (f" (live tick {now.tz_convert(NY):%H:%M:%S} NY)" if how == "tick" else ""))
+        return True
+
+    def fill_intrabar(self, prices: dict) -> bool:
+        """Har ~1 s: live bid/ask ne armed limit chhua? -> turant fill (candle band hone ka 5 min wait nahi).
+        BUY limit: ask <= entry, SELL limit: bid >= entry. Jo yahan miss ho (1 s ke beech ka chhota touch),
+        woh candle band hone pe purane tareeke se (high/low) pakda jaata hai. True = koi trade khula."""
+        changed = False
+        for symbol, orders in self.armed.items():
+            p = prices.get(symbol)
+            if not orders or not p or p.get("tick_age_sec") is None or p["tick_age_sec"] > 60:
+                continue
+            keep = []
+            for o in orders:
+                hit = (p["ask"] <= o["entry"]) if o["bull"] else (p["bid"] >= o["entry"])
+                if not hit:
+                    keep.append(o)
+                    continue
+                ok = self._fill(symbol, o, "tick")   # fill ya FILL-SKIPPED - dono mein order armed se hat jaata hai
+                self._mark_watch(symbol, o, "filled" if ok else "fill_skipped")
+                changed = True
+            self.armed[symbol] = keep
+        return changed
+
+    def _mark_watch(self, symbol, o, status):
+        """Dashboard watchlist: is zone ko READY se FILLED karo (agli candle tak READY na dikhe)."""
+        if not self.write_view:
+            return
+        try:
+            zt = _unix(o["zone"])
+            for z in self.watch.get(symbol, {}).get("zones", []):
+                if z["zone_candle_time"] == zt and z["direction"] == o["direction"]:
+                    z["status"], z["reason"] = status, "price reached the entry"
+            _atomic_json(self.out / "watchlist.json", {"updated": pd.Timestamp.now(tz="UTC").isoformat(),
+                                                       "threshold": round(float(self.brain.threshold), 3),
+                                                       "symbols": self.watch})
+        except Exception as e:  # noqa: BLE001
+            self.log(f"view: watchlist update mein dikkat ({e.__class__.__name__}: {e})")
 
     # 2) open shadow trades: same exit logic as the backtest
     def _update_open(self, symbol, m5):
@@ -519,7 +565,7 @@ def reset_state(out: Path = LIVE):
     print(f"reset: purane files '_old_{stamp}' naam se rakh diye. Ab $10,000 se fresh shuru.")
 
 
-def run_live(poll_s: int = 5):
+def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
     from src.live import monitor
     from src.live.feeds import MT5Feed
     monitor.start_log(LIVE)                      # bot window ka sab kuch data/live/bot.log mein bhi (dashboard ke liye)
@@ -535,6 +581,7 @@ def run_live(poll_s: int = 5):
     eng = ShadowEngine(feed, news_guard=guard, resume=True)
     last = {}
     news_hour = pd.Timestamp.now(tz="UTC").floor("h")
+    last_health = 0.0
     print("Shadow mode chal raha hai (koi order nahi). Band karne ke liye Ctrl+C.")
     try:
         while True:
@@ -555,7 +602,12 @@ def run_live(poll_s: int = 5):
                     print(f"{pd.Timestamp.now(tz=NY):%H:%M:%S} NY  {s} checked ({time.time() - t0:.1f}s) | "
                           f"equity ${eng.equity:,.2f} | open {len(eng.open)} | armed {len(eng.armed.get(s, []))}")
                     eng.save()
-            monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / prices / VPS sehat
+            prices = monitor.write_ticks(feed, eng, LIVE)              # dashboard: live bid/ask + candle (har ~1 s)
+            if prices and eng.fill_intrabar(prices):                   # limit chhua -> trade turant khula
+                eng.save()                                             # dashboard ko seconds mein dikhe
+            if time.time() - last_health >= health_every_s:
+                monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / VPS sehat (har ~5 s)
+                last_health = time.time()
             time.sleep(poll_s)
     except KeyboardInterrupt:
         eng.save()

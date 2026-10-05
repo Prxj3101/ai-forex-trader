@@ -82,15 +82,20 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
     bars = list(raw.get("bars") or [])
     m5 = None
     # chal rahi candle (health.json, har ~5 s) jodo -> chart live hilta hai
-    hf = live / "health.json"
-    if bars and hf.exists():
+    fb = None
+    for name in ("ticks.json", "health.json"):          # ticks.json har ~1 s, health.json purana backup
+        hf = live / name
+        if not bars or not hf.exists():
+            continue
         try:
-            fb = (json.loads(hf.read_text()).get("forming") or {}).get(symbol)
-            if fb and fb[0] > bars[-1][0]:
-                bars.append(fb)
-                out["forming_time"] = fb[0]
+            cand = (json.loads(hf.read_text()).get("forming") or {}).get(symbol)
+            if cand and (fb is None or cand[0] > fb[0]):
+                fb = cand
         except Exception:  # noqa: BLE001
             pass
+    if fb and fb[0] > bars[-1][0]:
+        bars.append(fb)
+        out["forming_time"] = fb[0]
     if bars:
         d = pd.DataFrame(bars, columns=["t", "open", "high", "low", "close"])
         d.index = pd.to_datetime(d["t"], unit="s", utc=True)
@@ -165,6 +170,35 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
                 have.add(fts)
     except Exception:  # noqa: BLE001
         pass
+    return out
+
+
+def build_ticks(live: Path) -> dict:
+    """Halka live data (dashboard har 1 s mangta hai): bid/ask, forming candle, khule trades (live P&L ke liye)."""
+    out: dict = {"updated": None, "age_sec": None, "prices": {}, "forming": {}, "open": []}
+    tf = live / "ticks.json"
+    if tf.exists():
+        try:
+            t = json.loads(tf.read_text())
+            out.update(updated=t.get("updated"), prices=t.get("prices") or {}, forming=t.get("forming") or {})
+            if out["updated"]:
+                out["age_sec"] = round((pd.Timestamp.now(tz="UTC") - pd.Timestamp(out["updated"])).total_seconds(), 1)
+        except Exception:  # noqa: BLE001 - file likhi ja rahi ho
+            pass
+    sf = live / "shadow_state.json"
+    if sf.exists():
+        try:
+            st = json.loads(sf.read_text())
+            out["open"] = [{"symbol": t.get("symbol"), "direction": t.get("direction"), "entry": clean(t.get("entry")),
+                            "sl": clean(t.get("sl")), "lots": clean(t.get("lots")), "exit": t.get("exit"),
+                            "sl_pips": clean(t.get("sl_pips")), "score": clean(t.get("score")),
+                            "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")),
+                            "best_r": clean(t.get("best_r")), "r_now": clean(t.get("r_now")),
+                            "filled_at": to_unix(pd.Timestamp(t["filled_at"])) if t.get("filled_at") else None,
+                            "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
+                           for t in st.get("open_trades", [])]
+        except Exception:  # noqa: BLE001
+            pass
     return out
 
 

@@ -1,6 +1,7 @@
 import { AreaSeries, ColorType, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts'
 import { useEffect, useRef, useState } from 'react'
-import { api, type LiveHealth, type LiveStatus } from '../lib/api'
+import { api, type LiveHealth, type LiveStatus, type LiveTickTrade } from '../lib/api'
+import { floatPnl, fmtFill, fmtSigned, fmtUsd, useLiveTicks } from '../lib/pnl'
 import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
 import LiveMarketPanel from './LiveMarketPanel'
@@ -239,6 +240,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   const [tick, setTick] = useState(0)                 // REFRESH button dabane pe badhta hai -> turant reload
   const [loading, setLoading] = useState(false)
   const [loadedAt, setLoadedAt] = useState<Date | null>(null)
+  const ticks = useLiveTicks(connected)               // har ~1 s: bid/ask + chalti candle -> live P&L
 
   useEffect(() => {
     if (!connected) return
@@ -307,7 +309,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
     </div>
   )
 
-  const market = <LiveMarketPanel connected={connected} data={data} />
+  const market = <LiveMarketPanel connected={connected} data={data} ticks={ticks} />
 
   if (!data || data.status === 'none' || !data.account) {
     return (
@@ -330,7 +332,15 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   const a = data.account
   const c = data.closed ?? { count: 0, wins: 0, win_pct: null, pnl: 0, r_sum: 0, pf: null }
   const ddColor = a.dd_pct >= a.kill_dd_pct ? 'var(--red)' : a.dd_pct >= a.brake_dd_pct ? 'var(--amber)' : 'var(--text)'
-  const open = data.open_trades ?? []
+  // khule trades: ticks (har ~1 s) se -> naya trade seconds mein dikhe; ticks na hon toh 15 s wala data
+  const open: LiveTickTrade[] = ticks?.updated ? ticks.open : (data.open_trades ?? [])
+  // live P&L har trade ka (ticks se, har ~1 s). Bhav na ho toh null -> bot ka 5-min wala r_now dikhega
+  const live = open.map((t) => {
+    const p = ticks?.prices[t.symbol]
+    return p ? floatPnl(t, p.bid, p.ask) : null
+  })
+  const floating = live.reduce((s, p) => s + (p?.usd ?? 0), 0)
+  const hasLive = live.some((p) => p !== null)
   const trades = data.trades ?? []
   const decisions = data.decisions ?? []
   const whatif = data.whatif ?? []
@@ -370,24 +380,51 @@ export default function LivePanel({ connected }: { connected: boolean }) {
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
         {/* trades */}
         <div className="min-w-0">
-          <div className="mb-1 text-[9px] tracking-[2px] text-muted">OPEN TRADES ({open.length})</div>
+          <div className="mb-1 flex items-center gap-2 text-[9px] tracking-[2px] text-muted">
+            OPEN TRADES ({open.length})
+            {open.length > 0 && hasLive && (
+              <span className="text-[11px] tracking-[1px]" style={{ color: pnlColor(floating) }}
+                title="Floating profit / loss of all open trades right now (after commission). Updates about every second.">
+                · FLOATING {fmtUsd(floating)}
+              </span>
+            )}
+            {open.length > 0 && hasLive && (
+              <i className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: 'var(--green)' }} title="Live prices" />
+            )}
+          </div>
           {open.length === 0 ? (
             <div className="mb-3 text-[10px] text-muted">No open trades.</div>
           ) : (
             <table className="mb-3 w-full text-[10px]">
-              <thead className="text-muted"><tr><th className="text-left font-normal">PAIR</th><th className="text-left font-normal">SIDE</th><th className="text-right font-normal">ENTRY</th><th className="text-right font-normal">SL PIPS</th><th className="text-right font-normal">LOTS</th><th className="text-right font-normal">EXIT</th><th className="text-right font-normal">R NOW</th></tr></thead>
+              <thead className="text-muted"><tr>
+                <th className="text-left font-normal">PAIR</th><th className="text-left font-normal">SIDE</th>
+                <th className="text-right font-normal">ENTRY</th><th className="text-right font-normal">LOTS</th>
+                <th className="text-right font-normal">EXIT</th>
+                <th className="text-right font-normal" title="Live price (bid for a buy, ask for a sell)">NOW</th>
+                <th className="text-right font-normal">PIPS</th>
+                <th className="text-right font-normal" title="Live profit / loss in dollars, after commission">P&amp;L</th>
+                <th className="text-right font-normal" title="Live profit / loss in R (1R = the stop loss distance)">R</th>
+              </tr></thead>
               <tbody>
-                {open.map((t, i) => (
-                  <tr key={i} title={t.fill_time ? `Filled ${fmtTs(t.fill_time)} NY · ML score ${(t.score * 100).toFixed(0)}% · risk $${t.risk_usd}` : undefined}>
-                    <td>{t.symbol}</td>
-                    <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'}</td>
-                    <td className="text-right">{t.entry}</td>
-                    <td className="text-right">{t.sl_pips}</td>
-                    <td className="text-right">{t.lots}</td>
-                    <td className="text-right">{t.exit === 'trail' ? 'TRAIL' : '1:1'}</td>
-                    <td className="text-right" style={{ color: pnlColor(t.r_now ?? 0) }}>{t.r_now == null ? '—' : signed(t.r_now)}</td>
-                  </tr>
-                ))}
+                {open.map((t, i) => {
+                  const p = live[i]
+                  const px = ticks?.prices[t.symbol]
+                  const now = px ? (t.direction === 'bull' ? px.bid : px.ask) : null
+                  const r = p ? p.r : t.r_now
+                  return (
+                    <tr key={i} title={`Filled ${fmtFill(t)} NY · SL ${t.sl}${t.sl_pips != null ? ` (${t.sl_pips} pips)` : ''}${t.score != null ? ` · ML score ${(t.score * 100).toFixed(0)}%` : ''}`}>
+                      <td>{t.symbol}</td>
+                      <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'}</td>
+                      <td className="text-right">{t.entry}</td>
+                      <td className="text-right">{t.lots}</td>
+                      <td className="text-right">{t.exit === 'trail' ? 'TRAIL' : '1:1'}</td>
+                      <td className="text-right">{now ?? '—'}</td>
+                      <td className="text-right" style={{ color: pnlColor(p?.pips ?? 0) }}>{p ? fmtSigned(p.pips) : '—'}</td>
+                      <td className="text-right" style={{ color: pnlColor(p?.usd ?? 0) }}>{p ? fmtUsd(p.usd) : '—'}</td>
+                      <td className="text-right" style={{ color: pnlColor(r ?? 0) }}>{r == null ? '—' : signed(r)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}

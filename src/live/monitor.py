@@ -127,6 +127,55 @@ def _system(mt5_pid_cache: dict) -> dict:
 _MT5_PID: dict = {}
 
 
+def _prices_forming(feed, eng, now: pd.Timestamp):
+    """Har pair ka abhi ka bid/ask + chal rahi (forming) M5 candle. (prices, forming, market_open)"""
+    mt5 = feed.mt5
+    prices, forming, fresh = {}, {}, False
+    for s in eng.symbols:
+        t = mt5.symbol_info_tick(s)
+        if t is None:
+            continue
+        tick_utc = feed._to_utc(np.array([t.time]))[0]
+        age = (now - tick_utc).total_seconds() if pd.notna(tick_utc) else None
+        fresh = fresh or (age is not None and age < 600)
+        pip = PIP.get(s, 0.0001)
+        prices[s] = {"bid": float(t.bid), "ask": float(t.ask),
+                     "spread_pips": round((t.ask - t.bid) / pip, 2),
+                     "tick_age_sec": round(age) if age is not None else None}
+    # abhi chal rahi (forming) M5 candle -> dashboard chart TradingView jaisa hilta rahe
+    for s in eng.symbols:
+        try:
+            r = mt5.copy_rates_from_pos(s, mt5.TIMEFRAME_M5, 0, 1)
+            if r is None or len(r) == 0:
+                continue
+            t0 = feed._to_utc(np.array([r[0]["time"]]))[0]
+            if pd.notna(t0):
+                forming[s] = [int(t0.timestamp()), float(r[0]["open"]), float(r[0]["high"]),
+                              float(r[0]["low"]), float(r[0]["close"])]
+        except Exception:  # noqa: BLE001
+            continue
+    return prices, forming, fresh
+
+
+def write_ticks(feed, eng, live_dir: Path):
+    """data/live/ticks.json: sirf bid/ask + forming candle (har ~1 sec). Halka file -> dashboard live P&L + candle."""
+    try:
+        mt5 = getattr(feed, "mt5", None)
+        if mt5 is None:
+            return None
+        now = pd.Timestamp.now(tz="UTC")
+        prices, forming, _ = _prices_forming(feed, eng, now)
+        tmp = live_dir / "ticks.json.tmp"
+        tmp.write_text(json.dumps({"updated": now.isoformat(), "prices": prices, "forming": forming}))
+        tmp.replace(live_dir / "ticks.json")
+        return prices                     # shadow loop isse armed limits ka turant fill check karta hai
+    except Exception as e:  # noqa: BLE001 - kabhi bot ko na roke
+        if not getattr(write_ticks, "_warned", False):
+            print(f"monitor: ticks likhne mein dikkat ({e.__class__.__name__}: {e}) - bot chalta rahega")
+            write_ticks._warned = True
+        return None
+
+
 def write_health(feed, eng, live_dir: Path, started_at: pd.Timestamp, guard=None):
     """data/live/health.json likho. Bot ke main loop se har ~10 sec bulaya jaata hai."""
     try:
@@ -147,30 +196,7 @@ def write_health(feed, eng, live_dir: Path, started_at: pd.Timestamp, guard=None
                 "broker_time": ("NY+7" if feed.mode == "ny+7" else f"UTC{feed.fixed_hours:+d}"),
                 "broker_time_checked": not getattr(feed, "unverified", False),
             }
-            for s in eng.symbols:
-                t = mt5.symbol_info_tick(s)
-                if t is None:
-                    continue
-                tick_utc = feed._to_utc(np.array([t.time]))[0]
-                age = (now - tick_utc).total_seconds() if pd.notna(tick_utc) else None
-                fresh = fresh or (age is not None and age < 600)
-                pip = PIP.get(s, 0.0001)
-                prices[s] = {"bid": float(t.bid), "ask": float(t.ask),
-                             "spread_pips": round((t.ask - t.bid) / pip, 2),
-                             "tick_age_sec": round(age) if age is not None else None}
-            # abhi chal rahi (forming) M5 candle -> dashboard chart TradingView jaisa hilta rahe
-            forming = {}
-            for s in eng.symbols:
-                try:
-                    r = mt5.copy_rates_from_pos(s, mt5.TIMEFRAME_M5, 0, 1)
-                    if r is None or len(r) == 0:
-                        continue
-                    t0 = feed._to_utc(np.array([r[0]["time"]]))[0]
-                    if pd.notna(t0):
-                        forming[s] = [int(t0.timestamp()), float(r[0]["open"]), float(r[0]["high"]),
-                                      float(r[0]["low"]), float(r[0]["close"])]
-                except Exception:  # noqa: BLE001
-                    continue
+            prices, forming, fresh = _prices_forming(feed, eng, now)
             h["forming"] = forming
         h["prices"] = prices
         h["market_open"] = fresh

@@ -24,6 +24,7 @@ export type Segment = {
   dash?: boolean
   width?: number
   label?: string
+  labelColor?: string   // label ka alag rang (jaise live P&L: hara / laal)
   faded?: boolean       // band ho chuke trade -> halka
 }
 
@@ -49,7 +50,7 @@ class SegRenderer implements IPrimitivePaneRenderer {
         ctx.stroke()
         ctx.setLineDash([])
         if (s.label) {
-          ctx.fillStyle = s.color
+          ctx.fillStyle = s.labelColor ?? s.color
           ctx.font = `${10 * vr}px 'Share Tech Mono', monospace`
           ctx.fillText(s.label, (Math.max(d.x2, d.x1 + 3) + 4) * hr, (d.y + 3) * vr)
         }
