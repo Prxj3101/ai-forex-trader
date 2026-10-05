@@ -185,10 +185,18 @@ def build_ticks(live: Path) -> dict:
                 out["age_sec"] = round((pd.Timestamp.now(tz="UTC") - pd.Timestamp(out["updated"])).total_seconds(), 1)
         except Exception:  # noqa: BLE001 - file likhi ja rahi ho
             pass
+    # manual buttons: kaun se zones avoid hain, kaun se CLOSE abhi pending (bot ne abhi lagaya nahi)
+    from src.live import control
+    ctl = control.load(live)
+    out["avoid"] = [{"symbol": a["symbol"], "zone": a["zone"], "direction": a["direction"]} for a in ctl["avoid"]]
+    out["close_pending"] = []
     sf = live / "shadow_state.json"
     if sf.exists():
         try:
             st = json.loads(sf.read_text())
+            done = set(st.get("close_done", []))
+            out["close_pending"] = [{"symbol": x["symbol"], "fill_time": x["fill_time"]}
+                                    for x in ctl["close"] if x["id"] not in done]
             out["open"] = [{"symbol": t.get("symbol"), "direction": t.get("direction"), "entry": clean(t.get("entry")),
                             "sl": clean(t.get("sl")), "lots": clean(t.get("lots")), "exit": t.get("exit"),
                             "sl_pips": clean(t.get("sl_pips")), "score": clean(t.get("score")),

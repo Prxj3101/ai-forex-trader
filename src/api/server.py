@@ -498,6 +498,37 @@ def live_ticks():
     return _remote_get(remote, "/api/live/ticks", {}, timeout=4)
 
 
+@app.post("/api/live/control")
+def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
+                 fill_time: int | None = None):
+    """Dashboard buttons: AVOID / UNDO zone, CLOSE khula shadow trade -> bot (VPS ya isi PC pe)."""
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    from src.live import control
+    remote = _remote_cfg()
+    if remote is None:
+        try:
+            c = control.apply(LIVE, action, symbol, zone=zone, direction=direction, fill_time=fill_time)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "avoid": c["avoid"], "close": c["close"], "source": "local"}
+    params = {k: v for k, v in dict(action=action, symbol=symbol, zone=zone, direction=direction,
+                                     fill_time=fill_time).items() if v is not None}
+    url = remote["url"].rstrip("/") + "/api/live/control?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, method="POST", headers={"X-Live-Token": remote["token"]})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read().decode()) | {"source": "vps"}
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise HTTPException(502, "VPS live API is an old version: git pull + restart LIVE API on the VPS") from e
+        raise HTTPException(502, "VPS rejected the token" if e.code == 401 else f"VPS error {e.code}") from e
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Cannot reach VPS: {e.__class__.__name__}") from e
+
+
 @app.get("/api/live")
 def live_status(decisions: int = 40, trades: int = 30):
     """Shadow bot ka live hisaab: account, khule trades, band trades, decisions, what-if summary."""

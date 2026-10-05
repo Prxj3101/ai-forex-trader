@@ -406,7 +406,13 @@ export type LiveTicks = {
   prices: Record<string, { bid: number; ask: number; spread_pips: number; tick_age_sec?: number | null }>
   forming: Record<string, [number, number, number, number, number]>
   open: LiveTickTrade[]
+  avoid?: { symbol: string; zone: number; direction: 'bull' | 'bear' }[]
+  close_pending?: { symbol: string; fill_time: number }[]
 }
+
+export type LiveControl =
+  | { action: 'avoid' | 'unavoid'; symbol: string; zone: number; direction: 'bull' | 'bear' }
+  | { action: 'close'; symbol: string; fill_time: number }
 
 export type LiveTickTrade = {
   symbol: string
@@ -524,6 +530,7 @@ export const api = {
   live: () => request<LiveStatus>('/api/live'),
   liveChart: (symbol: string, tf: string) => request<LiveChart>('/api/live/chart', { symbol, tf }),
   liveTicks: () => request<LiveTicks>('/api/live/ticks'),
+  liveControl: (c: LiveControl) => request<{ ok: boolean }>('/api/live/control', { ...c }, 'POST'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>
     request<ResearchV2Report>('/api/research/v2/report', {

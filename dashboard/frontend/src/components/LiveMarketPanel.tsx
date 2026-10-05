@@ -15,7 +15,7 @@ import {
 } from 'lightweight-charts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type LiveChart, type LiveStatus, type LiveTickTrade, type LiveTicks, type LiveWatchZone, type Zone } from '../lib/api'
-import { floatPnl, fmtFill, fmtFillShort, fmtSigned, fmtUsd } from '../lib/pnl'
+import { floatPnl, fmtFill, fmtFillShort, fmtSigned, fmtUsd, sendControl } from '../lib/pnl'
 import { useNow } from '../lib/hooks'
 import { NY, fmtTick, fmtTs } from '../lib/time'
 import { type Segment, SegmentsPrimitive } from '../lib/segmentsPrimitive'
@@ -36,6 +36,7 @@ const digitsOf = (s: string) => (s.endsWith('JPY') ? 3 : 5)
 const STATUS: Record<string, { text: string; color: string; tip: string }> = {
   ready: { text: 'READY', color: 'var(--green)', tip: 'Passes every check. If price touches the entry in this candle, the bot takes it.' },
   filled: { text: 'FILLED', color: 'var(--cyan)', tip: 'Price reached the entry: the trade is open (see OPEN TRADES)' },
+  avoided: { text: 'AVOIDED', color: 'var(--amber)', tip: 'You told the bot not to trade this zone (press UNDO to allow it again)' },
   fill_skipped: { text: 'FILL SKIPPED', color: 'var(--amber)', tip: 'Price reached the entry but a risk limit blocked the trade at that moment' },
   ml_low: { text: 'ML LOW', color: 'var(--muted)', tip: 'ML score below the top-30% threshold' },
   value_area: { text: 'VALUE AREA', color: 'var(--muted)', tip: 'Entry on the expensive side of the last 24h value area' },
@@ -351,6 +352,29 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
   )
 }
 
+/** CLOSE button: khula shadow trade abhi market price pe band (bot ~1 s mein karta hai). */
+export function CloseButton({ t, closing, pnl }: { t: LiveTickTrade; closing: boolean; pnl: string | null }) {
+  if (t.fill_time == null) return null
+  if (closing) return <span className="text-[9px]" style={{ color: 'var(--amber)' }}>CLOSING...</span>
+  return (
+    <button
+      className="chip !px-1.5 !py-0 text-[9px]"
+      style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+      title="Close this shadow trade now at the market price"
+      onClick={(e) => {
+        e.stopPropagation()
+        const side = t.direction === 'bull' ? 'BUY' : 'SELL'
+        void sendControl(
+          { action: 'close', symbol: t.symbol, fill_time: t.fill_time! },
+          `Close this trade now at the market price?\n\n${t.symbol} ${side} ${t.lots} lots at ${t.entry}${pnl ? `\nRight now: ${pnl}` : ''}\n\nThis cannot be undone.`,
+        )
+      }}
+    >
+      CLOSE
+    </button>
+  )
+}
+
 export default function LiveMarketPanel({ connected, data, ticks = null }: { connected: boolean; data: LiveStatus | null; ticks?: LiveTicks | null }) {
   const [symbol, setSymbol] = useState('EURUSD')
   const [tf, setTf] = useState<(typeof TFS)[number]>('M15')
@@ -376,6 +400,12 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
     const p = ticks?.prices[t.symbol]
     return s + (p ? floatPnl(t, p.bid, p.ask).usd : 0)
   }, 0)
+
+  // manual buttons ki halat (ticks se, har ~1 s)
+  const isAvoided = (sym: string, zone: number | null | undefined, dir: string) =>
+    zone != null && (ticks?.avoid ?? []).some((a) => a.symbol === sym && a.zone === zone && a.direction === dir)
+  const isClosing = (t: LiveTickTrade) =>
+    (ticks?.close_pending ?? []).some((c) => c.symbol === t.symbol && c.fill_time === t.fill_time)
 
   const news = h?.news
   const pairs = Object.keys(data?.watch?.symbols ?? {}).length ? Object.keys(data!.watch!.symbols) : PAIRS
@@ -428,11 +458,13 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                     <th className="text-right font-normal">ML</th>
                     <th className="text-right font-normal" title="Exit the exit brain picked: 1:1 = fixed target at 1R; TRAIL = stop follows price after +1R">EXIT</th>
                     <th className="text-right font-normal">STATUS</th>
+                    <th className="font-normal" title="AVOID = you tell the bot not to trade this zone. UNDO = allow it again." />
                   </tr>
                 </thead>
                 <tbody>
                   {watch.map((z, i) => {
-                    const st = STATUS[z.status] ?? { text: z.status.toUpperCase(), color: 'var(--muted)', tip: z.reason }
+                    const avoided = isAvoided(z.symbol, z.zone_candle_time, z.direction) || z.status === 'avoided'
+                    const st = avoided ? STATUS.avoided : STATUS[z.status] ?? { text: z.status.toUpperCase(), color: 'var(--muted)', tip: z.reason }
                     return (
                       <tr
                         key={i}
@@ -449,6 +481,25 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                           {z.exit === 'trail' ? 'TRAIL' : z.exit === 'tp1' ? '1:1' : '—'}
                         </td>
                         <td className="text-right" style={{ color: st.color }}>{st.text}</td>
+                        <td className="pl-1 text-right">
+                          {z.zone_candle_time != null && (
+                            <button
+                              className="chip !px-1.5 !py-0 text-[9px]"
+                              style={{ color: avoided ? 'var(--cyan)' : 'var(--red)', borderColor: avoided ? 'var(--cyan)' : 'var(--red)' }}
+                              title={avoided ? 'Allow the bot to trade this zone again' : 'Tell the bot NOT to trade this zone'}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const side = z.direction === 'bull' ? 'BUY' : 'SELL'
+                                void sendControl(
+                                  { action: avoided ? 'unavoid' : 'avoid', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction },
+                                  avoided ? null : `Avoid this zone?\n\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}\n\nThe bot will not trade it. You can undo this.`,
+                                )
+                              }}
+                            >
+                              {avoided ? 'UNDO' : 'AVOID'}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     )
                   })}
@@ -487,6 +538,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                       <span className="text-[10px]" style={{ color: t.exit === 'trail' ? '#ffb020' : 'var(--green)' }}>{t.exit === 'trail' ? 'TRAIL' : '1:1'}</span>
                       {fresh && <span className="text-[9px]" style={{ color: 'var(--cyan)' }}>NEW</span>}
                       <span className="ml-auto font-medium" style={{ color: col }}>{pl ? fmtUsd(pl.usd) : '—'}</span>
+                      <CloseButton t={t} closing={isClosing(t)} pnl={pl ? fmtUsd(pl.usd) : null} />
                     </div>
                     <div className="flex items-baseline gap-2 text-[10px] text-muted">
                       <span>{t.entry.toFixed(dg)} → {p ? (t.direction === 'bull' ? p.bid : p.ask).toFixed(dg) : '—'}</span>

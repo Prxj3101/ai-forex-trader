@@ -1,8 +1,9 @@
 r"""
-LIVE API (VPS ke liye): chhota READ-ONLY server jo sirf shadow bot ka live hisaab dikhata hai.
+LIVE API (VPS ke liye): chhota server jo shadow bot ka live hisaab dikhata hai.
 
 Kyun: bot VPS pe chalta hai, dashboard laptop pe. Laptop ka backend yahan se data mangta hai.
-Ye server kuch bhi BADAL nahi sakta (na bot rok sakta, na trade, na retrain) - sirf padhta hai.
+Likh sirf EK cheez sakta hai: data/live/control.json (dashboard ke AVOID / UNDO / CLOSE buttons).
+Iske alawa kuch nahi badal sakta (na bot rok sakta, na naya trade, na settings, na retrain).
 
 Suraksha:
   - har request mein token chahiye (header "X-Live-Token"). Token data/live_api_token.txt mein
@@ -19,6 +20,7 @@ Endpoints:
     GET /api/live  -> wahi JSON jo dashboard ka LIVE panel use karta hai (token chahiye)
     GET /api/live/chart?symbol=EURUSD&tf=M15 -> live MT5 candles + zones + trades (token chahiye)
     GET /api/live/ticks -> bid/ask + forming candle + khule trades, har ~1 s (token chahiye)
+    POST /api/live/control?action=avoid|unavoid|close&symbol=..&zone=..&direction=..&fill_time=.. (token chahiye)
 """
 from __future__ import annotations
 
@@ -87,6 +89,20 @@ def live_ticks(x_live_token: str = Header(default="")):
     return live_status.build_ticks(LIVE)
 
 
+@app.post("/api/live/control")
+def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
+                 fill_time: int | None = None, x_live_token: str = Header(default="")):
+    """Sirf 2 manual buttons: AVOID/UNDO zone, CLOSE khula shadow trade. Bot ~1 s mein lagata hai."""
+    if not hmac.compare_digest(x_live_token, TOKEN):
+        raise HTTPException(401, "bad token")
+    from src.live import control
+    try:
+        c = control.apply(LIVE, action, symbol, zone=zone, direction=direction, fill_time=fill_time)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ok": True, "avoid": c["avoid"], "close": c["close"]}
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=PORT)
@@ -96,5 +112,5 @@ if __name__ == "__main__":
         print(TOKEN)
         raise SystemExit
     import uvicorn
-    print(f"live api: read-only, port {a.port}, data folder {LIVE}")
+    print(f"live api: port {a.port}, data folder {LIVE} (read + manual AVOID/CLOSE buttons only)")
     uvicorn.run(app, host="0.0.0.0", port=a.port, log_level="warning")

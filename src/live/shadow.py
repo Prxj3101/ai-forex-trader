@@ -42,6 +42,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src import config  # noqa: E402
+from src.live import control  # noqa: E402
 from src.live.brain import Brain  # noqa: E402
 from src.live.live_features import HISTORY_DAYS, candidates  # noqa: E402
 from src.research.management import POLICIES, run_trade_full  # noqa: E402
@@ -64,7 +65,7 @@ def _category(reason: str | None) -> str:
     if reason is None:
         return "taken"
     r = reason.lower()
-    for key, lab in (("ml score", "ml_low"), ("value area", "value_area"), ("market quiet", "quiet"),
+    for key, lab in (("avoided manually", "avoided"), ("ml score", "ml_low"), ("value area", "value_area"), ("market quiet", "quiet"),
                      ("news", "news"), ("kill", "kill_switch"), ("daily", "daily_limit"), ("lot below", "lot_small")):
         if key in r:
             return lab
@@ -185,6 +186,12 @@ class ShadowEngine:
         self.filled_now: set = set()        # (symbol, zone, bar_time) that really filled
         self.news = news_guard
         self.out = out_dir
+        # manual control (dashboard AVOID / CLOSE buttons)
+        self.avoid: set = set()             # (symbol, zone unix, direction)
+        self.parked: dict = {}              # symbol -> is candle ke orders jo avoid hue (UNDO pe wapas)
+        self.control: dict = {"avoid": [], "close": []}
+        self.control_mtime = None
+        self.close_done: set = set()        # close command ids jo ho chuke
         self.out.mkdir(parents=True, exist_ok=True)
         self.dec_file = self.out / "decisions.csv"
         if self.dec_file.exists():                   # purani file mein "act" column nahi -> alag rakh do
@@ -201,6 +208,7 @@ class ShadowEngine:
         self.state_file = self.out / "shadow_state.json"
         if resume:
             self._load_state()
+        self.apply_control(None)            # tere avoid kiye zones startup se hi yaad
         c_ = self.cfg
         self.log(f"risk: {c_.risk_pct}% + house money {c_.house_money_pct}% of month profit (max {c_.risk_cap_pct}%), "
                  f"brake {c_.brake_dd_pct}% DD, kill {c_.kill_dd_pct}% DD, daily stop {c_.daily_loss_pct}%, "
@@ -217,6 +225,7 @@ class ShadowEngine:
     # ------------------------------------------------------------------
     def step(self, symbol: str):
         m5, bar_time = self.feed.bars(symbol)
+        self.parked[symbol] = []                 # pichli candle ke avoided orders ab bekaar
         self._resolve_armed(symbol, m5, bar_time)
         self._resolve_whatif(symbol, m5, bar_time)
         self._update_open(symbol, m5)
@@ -322,11 +331,9 @@ class ShadowEngine:
             for z in self.watch.get(symbol, {}).get("zones", []):
                 if z["zone_candle_time"] == zt and z["direction"] == o["direction"]:
                     z["status"], z["reason"] = status, "price reached the entry"
-            _atomic_json(self.out / "watchlist.json", {"updated": pd.Timestamp.now(tz="UTC").isoformat(),
-                                                       "threshold": round(float(self.brain.threshold), 3),
-                                                       "symbols": self.watch})
         except Exception as e:  # noqa: BLE001
             self.log(f"view: watchlist update mein dikkat ({e.__class__.__name__}: {e})")
+        self._write_watchlist()
 
     # 2) open shadow trades: same exit logic as the backtest
     def _update_open(self, symbol, m5):
@@ -347,22 +354,111 @@ class ShadowEngine:
                 t.update(_live_levels(t, hi[f:g], lo[f:g], sp[f:g]))     # chart: TP + abhi ka (trailing) SL
                 still.append(t)
                 continue
-            slip = 0.0
-            if why in ("sl", "trail", "be"):
-                sp_ = self.cfg.slippage_pips * PIP[symbol]
-                slip = t["lots"] * LOT * (sp_ if symbol.endswith("USD") else sp_ / t["entry"])
-            pnl = r * t["risk_usd"] - self.cfg.commission_per_lot * t["lots"] - slip
-            t.update(status="closed", r=round(float(r), 3), exit_reason=why, exit_time=idx[f + k] + pd.Timedelta(minutes=5),
-                     pnl=round(float(pnl), 2))
-            day = self._day(t["exit_time"])
-            self.equity += pnl
-            self.peak = max(self.peak, self.equity)
-            self.day_pnl[day] = self.day_pnl.get(day, 0.0) + pnl
-            self.closed.append(t)
-            row = pd.DataFrame([_to_json(t)]).reindex(columns=CLOSED_COLS)      # fixed column order
-            row.to_csv(self.closed_file, mode="a", header=not self.closed_file.exists(), index=False)
-            self.log(f"  CLOSED {symbol} {t['direction']} {why} R {r:+.2f} pnl ${pnl:+.2f} | equity ${self.equity:,.2f}")
+            self._book_close(t, r, why, idx[f + k] + pd.Timedelta(minutes=5))
         self.open = still
+
+    def _book_close(self, t, r, why, exit_time):
+        """Band trade ka hisaab: P&L (R x risk - commission - stop slippage), equity, closed_trades.csv."""
+        symbol = t["symbol"]
+        slip = 0.0
+        if why in ("sl", "trail", "be"):
+            sp_ = self.cfg.slippage_pips * PIP[symbol]
+            slip = t["lots"] * LOT * (sp_ if symbol.endswith("USD") else sp_ / t["entry"])
+        pnl = r * t["risk_usd"] - self.cfg.commission_per_lot * t["lots"] - slip
+        t.update(status="closed", r=round(float(r), 3), exit_reason=why, exit_time=exit_time, pnl=round(float(pnl), 2))
+        day = self._day(t["exit_time"])
+        self.equity += pnl
+        self.peak = max(self.peak, self.equity)
+        self.day_pnl[day] = self.day_pnl.get(day, 0.0) + pnl
+        self.closed.append(t)
+        row = pd.DataFrame([_to_json(t)]).reindex(columns=CLOSED_COLS)      # fixed column order
+        row.to_csv(self.closed_file, mode="a", header=not self.closed_file.exists(), index=False)
+        self.log(f"  CLOSED {symbol} {t['direction']} {why} R {r:+.2f} pnl ${pnl:+.2f} | equity ${self.equity:,.2f}")
+
+    # ------------------------------------------------------------------
+    # MANUAL CONTROL (dashboard buttons): AVOID zone / CLOSE khula trade  (src/live/control.py)
+    def _avoided(self, symbol, o) -> bool:
+        return control.avoid_key(symbol, _unix(o["zone"]), o["direction"]) in self.avoid
+
+    def apply_control(self, prices: dict | None) -> bool:
+        """Har ~1 s: control.json badla? -> avoid list update + close commands. True = kuch badla (save karo)."""
+        p = self.out / control.FILE
+        try:
+            mtime = p.stat().st_mtime if p.exists() else None
+        except OSError:
+            return False
+        pending = [x for x in self.control.get("close", []) if x["id"] not in self.close_done]
+        if mtime == self.control_mtime and not pending:
+            return False
+        if mtime != self.control_mtime:
+            self.control_mtime = mtime
+            self.control = control.load(self.out)
+        changed = False
+        new = {control.avoid_key(a["symbol"], a["zone"], a["direction"]) for a in self.control["avoid"]}
+        if new != self.avoid:
+            added, removed = new - self.avoid, self.avoid - new
+            self.avoid = new
+            for symbol in list(self.armed):
+                keep = []
+                for o in self.armed[symbol]:
+                    if self._avoided(symbol, o):
+                        self.parked.setdefault(symbol, []).append(o)      # isi candle mein UNDO ho toh wapas
+                        self._log_decision(symbol, o, "SKIP", "avoided manually")
+                    else:
+                        keep.append(o)
+                self.armed[symbol] = keep
+            for symbol in list(self.parked):                              # UNDO: abhi wali candle ka order wapas armed
+                back = [o for o in self.parked[symbol] if not self._avoided(symbol, o)]
+                self.parked[symbol] = [o for o in self.parked[symbol] if self._avoided(symbol, o)]
+                for o in back:
+                    self.armed.setdefault(symbol, []).append(o)
+                    self._log_decision(symbol, o, "TAKE", f"manual avoid removed, lots {o['lots']}, {o['exit']}")
+            for k in added:
+                self.log(f"  MANUAL: AVOID {k[0]} {k[2]} zone {pd.Timestamp(k[1], unit='s', tz='UTC').tz_convert(NY):%m-%d %H:%M} NY")
+            for k in removed:
+                self.log(f"  MANUAL: UNDO avoid {k[0]} {k[2]} zone {pd.Timestamp(k[1], unit='s', tz='UTC').tz_convert(NY):%m-%d %H:%M} NY")
+            self._mark_watch_all()
+            changed = True
+        for x in [x for x in self.control.get("close", []) if x["id"] not in self.close_done]:
+            t = next((t for t in self.open if t["symbol"] == x["symbol"] and _unix(t["fill_time"]) == int(x["fill_time"])), None)
+            if t is None:
+                self.close_done.add(x["id"])                           # pehle hi band ho chuka -> kuch nahi
+                self.log(f"  MANUAL: close {x['symbol']} - trade already closed")
+                changed = True
+                continue
+            px = (prices or {}).get(t["symbol"])
+            if not px or px.get("tick_age_sec") is None or px["tick_age_sec"] > 60:
+                continue                                               # bhav nahi (market band) -> baad mein
+            exit_px = px["bid"] if t["bull"] else px["ask"]
+            r = ((exit_px - t["entry"]) if t["bull"] else (t["entry"] - exit_px)) / t["risk"]
+            self.open = [o for o in self.open if o is not t]
+            self._book_close(t, float(r), "manual", pd.Timestamp.now(tz="UTC"))
+            self.close_done.add(x["id"])
+            self._log_decision(t["symbol"], t, "CLOSED-MANUAL", f"closed by you at {exit_px}, R {r:+.2f}, pnl ${t['pnl']:+.2f}")
+            changed = True
+        return changed
+
+    def _mark_watch_all(self):
+        """Watchlist: avoided zones -> status 'avoided'; UNDO hua toh READY wapas (agar bot ne TAKE kiya tha)."""
+        for symbol, w in self.watch.items():
+            for z in w.get("zones", []):
+                av = control.avoid_key(symbol, z["zone_candle_time"], z["direction"]) in self.avoid
+                if av and z["status"] in ("ready", "avoided"):
+                    z["status"], z["reason"] = "avoided", "avoided manually"
+                elif not av and z["status"] == "avoided":
+                    z["status"], z["reason"] = "ready", ""
+        if self.watch:
+            self._write_watchlist()
+
+    def _write_watchlist(self):
+        if not self.write_view:
+            return
+        try:
+            _atomic_json(self.out / "watchlist.json", {"updated": pd.Timestamp.now(tz="UTC").isoformat(),
+                                                       "threshold": round(float(self.brain.threshold), 3),
+                                                       "symbols": self.watch})
+        except Exception as e:  # noqa: BLE001
+            self.log(f"view: watchlist update mein dikkat ({e.__class__.__name__}: {e})")
 
     # 3) decisions for the current candle
     def _decide(self, symbol, m5, bar_time):
@@ -437,6 +533,8 @@ class ShadowEngine:
             return "too much USD one way"
         if o["lots"] < self.cfg.min_lot:
             return "lot below 0.01"
+        if self._avoided(symbol, o):              # bot lena chahta tha, par tune dashboard se mana kiya
+            return "avoided manually"
         return None
 
     def _log_decision(self, symbol, o, decision, reason):
@@ -471,7 +569,8 @@ class ShadowEngine:
             if (symbol, str(o["zone"]), o["bar_time"]) in self.filled_now:
                 label = "taken"
             elif label == "taken":
-                label = "fill_skipped"           # TAKE tha, par fill ke waqt limit / daily rule ne roka
+                # TAKE tha, par fill ke waqt limit / daily rule ne roka - ya candle ke beech tune AVOID dabaya
+                label = "avoided" if self._avoided(symbol, o) else "fill_skipped"
             self.wi_open.append(dict(o, label=label, fill_time=o["bar_time"]))
         self.wi_armed[symbol] = keep
         self.filled_now = {k for k in self.filled_now if k[2] >= bar_time - pd.Timedelta(minutes=10)}
@@ -529,6 +628,7 @@ class ShadowEngine:
         self.open = [_from_json(t) for t in st.get("open_trades", [])]
         self.wi_open = [_from_json(w) for w in st.get("whatif_open", [])]
         self.n_closed_before = int(st.get("closed", 0))
+        self.close_done = set(st.get("close_done", []))
         self.log(f"state: purana hisaab load (saved {st.get('updated')}): equity ${self.equity:,.2f}, peak ${self.peak:,.2f}, "
                  f"{len(self.open)} khule trade, {len(self.wi_open)} what-if, kill switch {'ON' if self.kill else 'off'}. "
                  f"Band rehte hue jo hua woh pehli candle pe update hoga.")
@@ -548,6 +648,7 @@ class ShadowEngine:
                      day_pnl={str(k): round(v, 2) for k, v in self.day_pnl.items()},
                      open_trades=[_to_json(t) for t in self.open],
                      whatif_open=[_to_json(w) for w in self.wi_open],
+                     close_done=sorted(self.close_done)[-200:],
                      open=len(self.open), closed=int(len(hist)),
                      win_pct=round(100 * float((pnl > 0).mean()), 1) if len(pnl) else None,
                      risk=asdict(self.cfg), updated=pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"))
@@ -558,7 +659,8 @@ class ShadowEngine:
 
 def reset_state(out: Path = LIVE):
     stamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    for f in ("shadow_state.json", "closed_trades.csv", "shadow_trades.csv", "whatif.csv", "traded_zones.json"):
+    for f in ("shadow_state.json", "closed_trades.csv", "shadow_trades.csv", "whatif.csv", "traded_zones.json",
+              "control.json"):
         p = out / f
         if p.exists():
             p.replace(out / f"{p.stem}_old_{stamp}{p.suffix}")
@@ -603,6 +705,8 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
                           f"equity ${eng.equity:,.2f} | open {len(eng.open)} | armed {len(eng.armed.get(s, []))}")
                     eng.save()
             prices = monitor.write_ticks(feed, eng, LIVE)              # dashboard: live bid/ask + candle (har ~1 s)
+            if eng.apply_control(prices):                              # dashboard: AVOID / UNDO / CLOSE buttons
+                eng.save()
             if prices and eng.fill_intrabar(prices):                   # limit chhua -> trade turant khula
                 eng.save()                                             # dashboard ko seconds mein dikhe
             if time.time() - last_health >= health_every_s:

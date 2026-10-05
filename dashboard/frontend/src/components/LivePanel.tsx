@@ -4,7 +4,7 @@ import { api, type LiveHealth, type LiveStatus, type LiveTickTrade } from '../li
 import { floatPnl, fmtFill, fmtSigned, fmtUsd, useLiveTicks } from '../lib/pnl'
 import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
-import LiveMarketPanel from './LiveMarketPanel'
+import LiveMarketPanel, { CloseButton } from './LiveMarketPanel'
 
 /*
   LIVE SHADOW ACCOUNT: shadow bot (src/live/shadow.py) jo files likhta hai, unka live view.
@@ -19,6 +19,7 @@ const pnlColor = (v: number) => (v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' :
 const DECISION_LABEL: Record<string, { text: string; tip: string }> = {
   taken: { text: 'TAKEN', tip: 'The bot opened this trade' },
   fill_skipped: { text: 'FILL SKIPPED', tip: 'The bot wanted it, but a limit or daily rule blocked it at the fill' },
+  avoided: { text: 'AVOIDED BY YOU', tip: 'The bot wanted it, but you pressed AVOID. The numbers show whether avoiding helped.' },
   ml_low: { text: 'ML LOW', tip: 'ML score below the top-30% threshold' },
   value_area: { text: 'VALUE AREA', tip: 'Entry on the expensive side of the last 24h value area' },
   quiet: { text: 'QUIET MARKET', tip: 'Tick volume before the touch was below 0.9x the 24h average' },
@@ -32,6 +33,7 @@ const DECISION_LABEL: Record<string, { text: string; tip: string }> = {
 function decisionColor(d: string) {
   if (d === 'FILLED' || d === 'TAKE') return 'var(--green)'
   if (d === 'FILL-SKIPPED') return 'var(--amber)'
+  if (d === 'CLOSED-MANUAL') return 'var(--cyan)'
   return 'var(--muted)'
 }
 
@@ -201,7 +203,7 @@ function logColor(line: string) {
   if (/Traceback|Error|ERROR|WARNING|!!!|failed/.test(line)) return 'var(--red)'
   if (/FILLED|-> TAKE|CLOSED/.test(line)) return 'var(--green)'
   if (/FILL-SKIPPED|warning|dikkat/i.test(line)) return 'var(--amber)'
-  if (/=====|feed:|news:|shadow:|state:|risk:/.test(line)) return 'var(--cyan)'
+  if (/=====|feed:|news:|shadow:|state:|risk:|MANUAL/.test(line)) return 'var(--cyan)'
   return 'var(--muted)'
 }
 
@@ -404,6 +406,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
                 <th className="text-right font-normal">PIPS</th>
                 <th className="text-right font-normal" title="Live profit / loss in dollars, after commission">P&amp;L</th>
                 <th className="text-right font-normal" title="Live profit / loss in R (1R = the stop loss distance)">R</th>
+                <th className="font-normal" />
               </tr></thead>
               <tbody>
                 {open.map((t, i) => {
@@ -422,6 +425,13 @@ export default function LivePanel({ connected }: { connected: boolean }) {
                       <td className="text-right" style={{ color: pnlColor(p?.pips ?? 0) }}>{p ? fmtSigned(p.pips) : '—'}</td>
                       <td className="text-right" style={{ color: pnlColor(p?.usd ?? 0) }}>{p ? fmtUsd(p.usd) : '—'}</td>
                       <td className="text-right" style={{ color: pnlColor(r ?? 0) }}>{r == null ? '—' : signed(r)}</td>
+                      <td className="pl-1 text-right">
+                        <CloseButton
+                          t={t}
+                          closing={(ticks?.close_pending ?? []).some((c) => c.symbol === t.symbol && c.fill_time === t.fill_time)}
+                          pnl={p ? fmtUsd(p.usd) : null}
+                        />
+                      </td>
                     </tr>
                   )
                 })}
