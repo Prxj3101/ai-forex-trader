@@ -137,7 +137,23 @@ export default function App() {
   const [riskReport, setRiskReport] = useState<RiskReport | null>(null)
   useEffect(() => {
     if (!connected) return
-    api.riskReport().then(setRiskReport).catch(() => setRiskReport(null))
+    let cancelled = false
+    let inFlight = false
+    const refresh = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const report = await api.riskReport()
+        if (!cancelled) setRiskReport(report)
+      } catch {
+        // Keep the last report during a temporary connection failure.
+      } finally {
+        inFlight = false
+      }
+    }
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 30_000)
+    return () => { cancelled = true; window.clearInterval(timer) }
   }, [connected, mlKey])
 
   const mlTraining = useMemo(() => {
@@ -158,23 +174,23 @@ export default function App() {
   return (
     <>
       <Starfield />
-      <div className="crt" />
       <Boot />
 
-      <div className="relative z-[1] flex flex-col gap-2.5 p-3">
+      <div className="dashboard-shell relative z-[1] flex flex-col">
         <Header
           pair={settings.symbol || '---'}
           connected={connected}
           dataOk={Object.keys(symbols).length > 0}
           mlOk={!!mlReport}
           tabs={
-            <div className="flex items-center gap-1.5">
+            <div className="header-tabs">
               {TABS.map((t) => (
                 <button
                   key={t.id}
                   className={`chip px-4 py-1.5 text-[12px] tracking-[3px] ${tab === t.id ? 'on' : ''}`}
                   onClick={() => changeTab(t.id)}
                   title={t.tip}
+                  aria-pressed={tab === t.id}
                 >
                   {t.label}
                 </button>
@@ -196,7 +212,7 @@ export default function App() {
             <div className="grid gap-2.5 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
               <AgentsPanel states={states} />
               <ChartPanel symbols={symbols} settings={settings} onChange={onSettings} onLog={onLog} mlKey={mlKey} botDisp={botDisp} />
-              <MLBrain report={mlReport} training={mlTraining} onTrain={onTrain} connected={connected} />
+              <MLBrain report={mlReport} accountReport={riskReport} training={mlTraining} onTrain={onTrain} connected={connected} />
             </div>
 
             <AccountPanel report={riskReport} />

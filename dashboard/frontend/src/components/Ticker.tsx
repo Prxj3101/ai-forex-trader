@@ -25,7 +25,7 @@ export default function Ticker({ symbols }: { symbols: string[] }) {
   const items = [...quotes, ...quotes, ...quotes]
 
   return (
-    <div className="relative h-[26px] overflow-hidden" style={{ borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', background: 'rgba(6,6,8,0.9)' }}>
+    <div className="market-ticker relative h-[26px] overflow-hidden" style={{ borderTop: '1px solid var(--line)', borderBottom: '1px solid var(--line)', background: 'var(--panel2)' }}>
       <div className="ticker-track">
         {items.length === 0 && <span className="text-muted">NO MARKET DATA</span>}
         {items.map((q, i) => (

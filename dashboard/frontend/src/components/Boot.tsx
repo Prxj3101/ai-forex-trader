@@ -65,11 +65,10 @@ export default function Boot() {
         <motion.div
           exit={{ opacity: 0 }}
           transition={{ duration: 0.8 }}
-          className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5"
-          style={{ background: '#000000' }}
+          className="boot-surface fixed inset-0 z-[100] flex flex-col items-center justify-center gap-5"
         >
           <Logo size={96} />
-          <div className="font-display glow-cyan text-3xl tracking-[10px]">AI FOREX TRADER</div>
+          <div className="boot-title font-display glow-cyan">AI FOREX TRADER</div>
           <pre className="min-h-[190px] w-[520px] max-w-[92vw] text-[13px]" style={{ color: 'var(--green)' }}>
             {lines.join('\n')}
           </pre>

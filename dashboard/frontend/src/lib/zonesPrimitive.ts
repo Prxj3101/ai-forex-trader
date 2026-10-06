@@ -35,11 +35,11 @@ class ZonesRenderer implements IPrimitivePaneRenderer {
         const w = Math.max((b.x2 - b.x1) * hr, 2)
         const y = b.yTop * vr
         const h = Math.max((b.yBot - b.yTop) * vr, 1)
-        ctx.globalAlpha = b.dead ? 0.35 : 1
+        ctx.globalAlpha = b.dead ? 0.55 : 1
         ctx.fillStyle = b.color + '26'
         ctx.fillRect(x, y, w, h)
         ctx.shadowColor = b.color
-        ctx.shadowBlur = 10 * hr
+        ctx.shadowBlur = 4 * hr
         ctx.strokeStyle = b.color
         ctx.lineWidth = 1 * hr
         ctx.strokeRect(x, y, w, h)
@@ -51,8 +51,12 @@ class ZonesRenderer implements IPrimitivePaneRenderer {
         ctx.stroke()
         ctx.setLineDash([])
         if (b.label) {
+          ctx.globalAlpha = 1
           ctx.fillStyle = b.color
-          ctx.font = `${10 * vr}px 'Share Tech Mono', monospace`
+          ctx.font = `700 ${12 * vr}px 'IBM Plex Mono', monospace`
+          ctx.strokeStyle = '#090b0e'
+          ctx.lineWidth = 3 * hr
+          ctx.strokeText(b.label, x + 4 * hr, y - 4 * vr)
           ctx.fillText(b.label, x + 4 * hr, y - 4 * vr)
         }
         ctx.globalAlpha = 1
@@ -143,7 +147,7 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
       const showLabel = this.labelMode === 'all' || (this.labelMode === 'live' && !dead)
       boxes.push({
         x1, x2, yTop, yBot, yBody,
-        color: bull ? '#00ff88' : '#ff2e63',
+        color: bull ? '#00ff9c' : '#ff426e',
         label: showLabel ? `${bull ? 'DEMAND' : 'SUPPLY'} ${z.bottom}-${z.top} · ${z.disp_atr}x ATR${z.has_fvg ? ' · FVG' : ''}` : '',
         dead,
       })

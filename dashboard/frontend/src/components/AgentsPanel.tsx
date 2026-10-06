@@ -73,13 +73,13 @@ export default function AgentsPanel({ states }: { states: Record<string, AgentSt
                 style={{ background: 'var(--panel2)' }}
                 animate={{
                   borderColor: lit ? color : rgba(theme, 0.28),
-                  boxShadow: lit ? `0 0 18px ${color}55, inset 0 0 14px ${color}1f` : '0 0 0 rgba(0,0,0,0)',
+                  boxShadow: lit ? `3px 3px 8px #101214, inset 0 1px 0 ${color}22` : '0 0 0 rgba(0,0,0,0)',
                 }}
                 transition={{ duration: 0.4 }}
               >
                 {active && <span className="card-sweep" style={{ background: `linear-gradient(90deg, transparent, ${color}33, transparent)` }} />}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-display truncate text-[10.5px] tracking-[1.5px]" style={{ color }}>{a.name}</span>
+                  <span className="font-display text-[10.5px] tracking-[.5px]" style={{ color }}>{a.name}</span>
                   <span
                     className={`flex-none border px-1.5 text-[9px] tracking-wider ${active ? 'blink' : ''}`}
                     style={{ color: lit ? color : 'var(--muted)', borderColor: lit ? color : 'var(--line)' }}

@@ -6,12 +6,12 @@ export type AgentInfo = { id: AgentId; name: string; color: string; tip: string;
 
 // Humare system ke layers = agents. Order = decision pipeline ka order.
 export const AGENTS: AgentInfo[] = [
-  { id: 'data', name: 'DATA AGENT', color: '#00f0ff', tip: 'Downloads, cleans and resamples market data', pipeline: 'new candle', robot: 'dish' },
-  { id: 'structure', name: 'STRUCTURE AGENT', color: '#b98cff', tip: 'Detects swings, BOS and CHoCH', pipeline: 'BOS / CHoCH', robot: 'twin' },
-  { id: 'zone', name: 'ZONE HUNTER', color: '#00ff88', tip: 'Finds orderflow zones, FVGs and liquidity', pipeline: 'orderflow zone', robot: 'antenna' },
-  { id: 'ml', name: 'ML BRAIN', color: '#ffc400', tip: 'Scores each zone: probability it works', pipeline: 'probability', robot: 'dome' },
-  { id: 'risk', name: 'RISK AGENT', color: '#ff5cc8', tip: 'Position size, costs, daily loss limit, account simulation', pipeline: 'lot + SL', robot: 'crest' },
-  { id: 'execution', name: 'EXECUTION AGENT', color: '#ff2e63', tip: 'Sends orders to the demo account', pipeline: 'order', robot: 'bolt' },
+  { id: 'data', name: 'DATA AGENT', color: '#00e5ff', tip: 'Downloads, cleans and resamples market data', pipeline: 'new candle', robot: 'dish' },
+  { id: 'structure', name: 'STRUCTURE AGENT', color: '#b580ff', tip: 'Detects swings, BOS and CHoCH', pipeline: 'BOS / CHoCH', robot: 'twin' },
+  { id: 'zone', name: 'ZONE HUNTER', color: '#00ff9c', tip: 'Finds orderflow zones, FVGs and liquidity', pipeline: 'orderflow zone', robot: 'antenna' },
+  { id: 'ml', name: 'ML BRAIN', color: '#ffd000', tip: 'Scores each zone: probability it works', pipeline: 'probability', robot: 'dome' },
+  { id: 'risk', name: 'RISK AGENT', color: '#ff52d3', tip: 'Position size, costs, daily loss limit, account simulation', pipeline: 'lot + SL', robot: 'crest' },
+  { id: 'execution', name: 'EXECUTION AGENT', color: '#ff426e', tip: 'Sends orders to the demo account', pipeline: 'order', robot: 'bolt' },
 ]
 
 /** Theme ke hisaab se agents ke colors: Data agent = accent, baaki overrides ke saath. */

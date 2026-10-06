@@ -18,8 +18,9 @@ WHAT-IF LOG (data/live/whatif.csv): jis bhi zone ko price ne chhua, uski ek row 
 (taken / ML low / value area / quiet / news / limits ...) aur 1:1 aur trailing dono se kitna R milta (gross + net).
 Isse demo ke baad pata chalega ki har filter aur exit brain live mein sahi kaam kar rahe hain ya nahi.
 
-Virtual account: $10,000, risk 0.25% (+ house money: is mahine ke profit ka 5%, max 0.5%), brake 5% (risk aadha),
-kill switch 9%, daily stop 1.5%, daily risk budget 2% (Funding Pips daily limit 3%),
+Virtual account: $10,000, combo 0.5% / 0.25% (reduce at 3% DD, recover at 1% DD).
+House money 5%, caps 1% / 0.5%; brake 5% (risk aadha), kill switch 10%.
+Daily stop/budget: aggressive 2%/2.5%, conservative 1.5%/2%,
 max 3 trades, 1 per pair, max 2 same USD direction. (src/risk/portfolio_sim.RiskConfig)
 
 Chalana:
@@ -46,8 +47,8 @@ from src.live import control  # noqa: E402
 from src.live.brain import Brain  # noqa: E402
 from src.live.live_features import HISTORY_DAYS, candidates  # noqa: E402
 from src.research.management import POLICIES, run_trade_full  # noqa: E402
-from src.risk.portfolio_sim import (LOT, PIP, RiskConfig, daily_ok, risk_usd_per_unit,  # noqa: E402
-                                    trade_risk_pct, trading_day, usd_side)
+from src.risk.portfolio_sim import (LOT, PIP, daily_ok, risk_usd_per_unit,  # noqa: E402
+                                    trade_risk_pct, trading_day, usd_side, RiskMode, combo_config)
 
 LIVE = ROOT / "data" / "live"
 NY = "America/New_York"
@@ -171,7 +172,8 @@ class ShadowEngine:
         self.spread_floor = config.ML_SPREAD_FLOOR if spread_floor is None else spread_floor
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = Brain()
-        self.cfg = RiskConfig(capital=capital, commission_per_lot=config.BROKER_COMMISSION)   # P&L = asli account
+        self.cfg = combo_config(capital, config.BROKER_COMMISSION)
+        self.risk_mode = RiskMode()
         self.equity = self.peak = capital
         self.day_pnl: dict = {}
         self.day_start: dict = {}           # broker trading day (NY 5 PM se) ke shuru ka balance
@@ -208,11 +210,13 @@ class ShadowEngine:
         self.state_file = self.out / "shadow_state.json"
         if resume:
             self._load_state()
+        self.risk_mode.select(self.cfg, self.equity, self.peak)
         self.apply_control(None)            # tere avoid kiye zones startup se hi yaad
         c_ = self.cfg
         self.log(f"risk: {c_.risk_pct}% + house money {c_.house_money_pct}% of month profit (max {c_.risk_cap_pct}%), "
                  f"brake {c_.brake_dd_pct}% DD, kill {c_.kill_dd_pct}% DD, daily stop {c_.daily_loss_pct}%, "
                  f"daily risk budget {c_.daily_risk_budget_pct}%")
+        self.log("risk combo: 0.5% -> 0.25% at 3% DD; back to 0.5% only at 1% DD")
 
     def _day(self, t):
         d = trading_day(t)
@@ -279,6 +283,25 @@ class ShadowEngine:
 
     def _fill(self, symbol, o, how: str) -> bool:
         """Armed limit order fill: risk limits dobara check -> khula shadow trade. how = 'tick' (live, turant) / 'candle'."""
+        self.risk_mode.select(self.cfg, self.equity, self.peak)
+        dd = (self.peak - self.equity) / self.peak * 100 if self.peak > 0 else 0
+        if dd >= self.cfg.kill_dd_pct:
+            self.kill = True
+        if self.kill:
+            self._log_decision(symbol, o, "FILL-SKIPPED", "kill switch active")
+            return False
+        if self.cfg.combo_enabled:
+            mkey = o['bar_time'].tz_convert(NY).strftime('%Y-%m')
+            if mkey != self.month:
+                self.month, self.month_start = mkey, self.equity
+            risk_pct, braked = trade_risk_pct(self.cfg, self.equity, self.peak, self.month_start)
+            per_unit = risk_usd_per_unit(symbol, o['entry'], o['risk'])
+            lots = float(np.floor((self.equity * risk_pct / 100 / per_unit) / LOT / self.cfg.lot_step) * self.cfg.lot_step)
+            o = dict(o, lots=round(lots, 2), risk_usd=round(lots * LOT * per_unit, 2),
+                     risk_pct=round(risk_pct, 3), braked=braked)
+            if lots < self.cfg.min_lot:
+                self._log_decision(symbol, o, "FILL-SKIPPED", "lot below 0.01")
+                return False
         if (len(self.open) >= self.cfg.max_open or any(t["symbol"] == symbol for t in self.open)
                 or sum(t["usd_side"] == o["usd_side"] for t in self.open) >= self.cfg.max_usd_same_side):
             self._log_decision(symbol, o, "FILL-SKIPPED", "limit reached at fill (another order filled first)")
@@ -462,6 +485,7 @@ class ShadowEngine:
 
     # 3) decisions for the current candle
     def _decide(self, symbol, m5, bar_time):
+        self.risk_mode.select(self.cfg, self.equity, self.peak)
         c = candidates(symbol, m5, bar_time, spread_floor=self.spread_floor)
         self.armed.setdefault(symbol, [])
         self.watch[symbol] = {"bar_time": int(bar_time.timestamp()), "zones": []}
@@ -621,6 +645,7 @@ class ShadowEngine:
                 old.replace(self.out / f"shadow_trades_before_state_{pd.Timestamp.now():%Y%m%d_%H%M%S}.csv")
             return
         self.equity, self.peak, self.kill = float(st["equity"]), float(st["peak"]), bool(st["kill"])
+        self.risk_mode = RiskMode(aggressive=st.get('risk_mode', 'aggressive') == 'aggressive')
         self.month, self.month_start = st.get("month"), float(st.get("month_start", self.equity))
         from datetime import date
         self.day_start = {date.fromisoformat(k): float(v) for k, v in st.get("day_start", {}).items()}
@@ -634,6 +659,7 @@ class ShadowEngine:
                  f"Band rehte hue jo hua woh pehli candle pe update hoga.")
 
     def save(self):
+        self.risk_mode.select(self.cfg, self.equity, self.peak)
         hist = pd.read_csv(self.closed_file) if self.closed_file.exists() else pd.DataFrame()
         rows = [dict(_to_json(t), r=t.get("r_now")) for t in self.open]
         snap = pd.concat([hist.assign(status="closed"),
@@ -643,6 +669,7 @@ class ShadowEngine:
             snap.to_csv(self.out / "shadow_trades.csv", index=False)
         pnl = hist["pnl"] if "pnl" in hist else pd.Series(dtype=float)
         state = dict(version=STATE_VERSION, equity=round(self.equity, 2), peak=round(self.peak, 2), kill=self.kill,
+                     risk_mode='aggressive' if self.risk_mode.aggressive else 'conservative',
                      month=self.month, month_start=round(self.month_start, 2),
                      day_start={str(k): round(v, 2) for k, v in self.day_start.items()},
                      day_pnl={str(k): round(v, 2) for k, v in self.day_pnl.items()},

@@ -94,14 +94,14 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
     if (!el) return
     const c = createChart(el, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#c3cfdf', fontFamily: "'Share Tech Mono', monospace", attributionLogo: false },
-      grid: { vertLines: { color: 'rgba(0,240,255,0.08)' }, horzLines: { color: 'rgba(0,240,255,0.08)' } },
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#ffffff', fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", attributionLogo: false },
+      grid: { vertLines: { color: 'rgba(196,208,224,0.10)' }, horzLines: { color: 'rgba(196,208,224,0.10)' } },
       crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: 'rgba(0,240,255,0.4)' },
-      timeScale: { borderColor: 'rgba(0,240,255,0.4)', timeVisible: true, tickMarkFormatter: (t: Time) => fmtTick(t as number, NY) },
+      rightPriceScale: { borderColor: 'rgba(154,174,198,0.16)' },
+      timeScale: { borderColor: 'rgba(154,174,198,0.16)', timeVisible: true, tickMarkFormatter: (t: Time) => fmtTick(t as number, NY) },
       localization: { timeFormatter: (t: Time) => fmtTs(t as number, NY) },
     })
-    const s = c.addSeries(CandlestickSeries, { upColor: '#00ff88', downColor: '#ff2e63', borderVisible: false, wickUpColor: '#00ff88', wickDownColor: '#ff2e63' })
+    const s = c.addSeries(CandlestickSeries, { upColor: '#00ff9c', downColor: '#ff426e', borderVisible: false, wickUpColor: '#00ff9c', wickDownColor: '#ff426e' })
     const p = new ZonesPrimitive()
     s.attachPrimitive(p)
     const sg = new SegmentsPrimitive()
@@ -168,13 +168,13 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
     const mk: SeriesMarker<Time>[] = []
     for (const t of data.trades) {
       const buy = t.direction === 'bull'
-      if (t.fill_ts >= first) mk.push({ time: t.fill_ts as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#00ff88' : '#ff2e63', shape: buy ? 'arrowUp' : 'arrowDown', text: buy ? 'BUY' : 'SELL' })
-      if (t.exit_ts >= first) mk.push({ time: t.exit_ts as UTCTimestamp, position: buy ? 'aboveBar' : 'belowBar', color: t.r > 0 ? '#00ff88' : '#ff2e63', shape: 'circle', text: `${t.r > 0 ? '+' : ''}${t.r.toFixed(1)}R` })
+      if (t.fill_ts >= first) mk.push({ time: t.fill_ts as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#00ff9c' : '#ff426e', shape: buy ? 'arrowUp' : 'arrowDown', text: buy ? 'BUY' : 'SELL' })
+      if (t.exit_ts >= first) mk.push({ time: t.exit_ts as UTCTimestamp, position: buy ? 'aboveBar' : 'belowBar', color: t.r > 0 ? '#00ff9c' : '#ff426e', shape: 'circle', text: `${t.r > 0 ? '+' : ''}${t.r.toFixed(1)}R` })
     }
     for (const t of data.open) {
       if (t.fill_time && t.fill_time >= first) {
         const buy = t.direction === 'bull'
-        mk.push({ time: t.fill_time as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: '#00f0ff', shape: buy ? 'arrowUp' : 'arrowDown', text: 'OPEN' })
+        mk.push({ time: t.fill_time as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: '#00e5ff', shape: buy ? 'arrowUp' : 'arrowDown', text: 'OPEN' })
       }
     }
     mk.sort((a, b) => (a.time as number) - (b.time as number))
@@ -215,9 +215,9 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
     if (!s || !data || data.symbol !== symbol || data.tf !== tf) return
     const barTimes = data.candles.map((c) => c.time)
     // trade lines: ENTRY / SL / TP / TRAIL SL (sirf trade ke time tak, TradingView position tool jaisa)
-    const GREEN = '#00ff88'
-    const RED = '#ff2e63'
-    const CYAN = '#00f0ff'
+    const GREEN = '#00ff9c'
+    const RED = '#ff426e'
+    const CYAN = '#00e5ff'
     const AMBER = '#ffb020'
     const exitTag = (exit: string | null | undefined) => (exit === 'trail' ? 'TRAIL' : exit === 'tp1' ? '1:1' : '')
     const slLabel = (exit: string | null | undefined) => (exitTag(exit) ? `SL · ${exitTag(exit)}` : 'SL')
@@ -295,7 +295,7 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
       const sec = left % 60
       const text = h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
       const lb = liveBar.current ?? last
-      setTimer({ text, color: lb.close >= lb.open ? '#00ff88' : '#ff2e63' })
+      setTimer({ text, color: lb.close >= lb.open ? '#00ff9c' : '#ff426e' })
     }
     tick()
     const id = window.setInterval(tick, 1000)
@@ -326,12 +326,12 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
 
   return (
     <div className="relative">
-      <div ref={box} className="h-[580px] w-full" />
+      <div ref={box} className="chart-surface h-[580px] w-full" />
       {timer && (
         <div
           ref={timerEl}
           className="pointer-events-none absolute text-center text-[10px] leading-[14px]"
-          style={{ right: 0, zIndex: 50, display: 'none', background: timer.color, color: '#000' }}
+          style={{ right: 0, zIndex: 50, display: 'none', background: '#1b2026', color: '#ffffff', borderBottom: `2px solid ${timer.color}` }}
           title="Time left until this candle closes"
         >
           {timer.text}
@@ -417,7 +417,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
         <em title="Candles come from the bot's own MT5 broker feed on the VPS, not from the historical data on this PC">BROKER FEED · ZONES THE BOT IS WATCHING · NEWS</em>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_350px]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_410px]">
         <div className="min-w-0">
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
             {pairs.map((s) => (
@@ -435,8 +435,8 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
           </div>
           <LiveChartBox symbol={symbol} tf={tf} connected={connected} ticks={ticks} />
           <div className="mt-1 text-[9px] text-muted">
-            Boxes = zones (bright = watching now, faded = already traded). Trade lines: <span style={{ color: '#00f0ff' }}>ENTRY</span> ·{' '}
-            <span style={{ color: '#ff2e63' }}>SL</span> · <span style={{ color: '#00ff88' }}>TP (1:1 trades)</span> ·{' '}
+            Boxes = zones (bright = watching now, faded = already traded). Trade lines: <span style={{ color: '#00e5ff' }}>ENTRY</span> ·{' '}
+            <span style={{ color: '#ff426e' }}>SL</span> · <span style={{ color: '#00ff9c' }}>TP (1:1 trades)</span> ·{' '}
             <span style={{ color: '#ffb020' }}>TRAIL SL (moves after +1R)</span>. Dotted = READY zone plan. Arrows = fills, circles = exits with R.
           </div>
         </div>
@@ -449,7 +449,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
             <div className="mb-3 text-[10px] text-muted">{data?.watch ? 'No live zones right now.' : 'Starts with the new bot version.'}</div>
           ) : (
             <div className="mb-3 max-h-[38vh] overflow-y-auto">
-              <table className="w-full text-[11px]">
+              <table className="watchlist-table w-full text-[11px]">
                 <thead className="sticky top-0 text-[9px] text-muted" style={{ background: 'var(--panel)' }}>
                   <tr>
                     <th className="text-left font-normal">PAIR</th><th className="text-left font-normal">SIDE</th>
@@ -477,7 +477,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                         <td className="text-right">{z.entry.toFixed(digitsOf(z.symbol))}</td>
                         <td className="text-right" style={{ color: z.away != null && z.away < 3 ? 'var(--amber)' : undefined }}>{z.away == null ? '—' : z.away.toFixed(1)}</td>
                         <td className="text-right" style={{ color: z.score >= (data?.watch?.threshold ?? 1) ? 'var(--green)' : 'var(--muted)' }}>{Math.round(z.score * 100)}%</td>
-                        <td className="text-right" style={{ color: z.exit === 'trail' ? '#ffb020' : 'var(--green)', opacity: z.status === 'ready' ? 1 : 0.5 }}>
+                        <td className="text-right" style={{ color: z.exit === 'trail' ? '#ffb020' : 'var(--green)', opacity: 1 }}>
                           {z.exit === 'trail' ? 'TRAIL' : z.exit === 'tp1' ? '1:1' : '—'}
                         </td>
                         <td className="text-right" style={{ color: st.color }}>{st.text}</td>
@@ -523,6 +523,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                 const pl = p ? floatPnl(t, p.bid, p.ask) : null
                 const col = pl ? (pl.usd >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)'
                 const dg = digitsOf(t.symbol)
+                const commission = t.commission_usd ?? t.lots * (data?.account?.commission_per_lot ?? 5)
                 const fresh = t.filled_at != null && now - t.filled_at < 300
                 return (
                   <div
@@ -530,7 +531,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                     className="cursor-pointer border-l-2 py-1 pl-2 text-[11px]"
                     style={{ borderColor: col, background: 'var(--panel2)' }}
                     onClick={() => setSymbol(t.symbol)}
-                    title={`Filled ${fmtFill(t)} NY · SL ${t.sl.toFixed(dg)}${t.sl_pips != null ? ` (${t.sl_pips} pips)` : ''}${t.score != null ? ` · ML ${Math.round(t.score * 100)}%` : ''}. Click to show on the chart.`}
+                    title={`Filled ${fmtFill(t)} NY · SL ${t.sl.toFixed(dg)}${t.sl_pips != null ? ` (${t.sl_pips} pips)` : ''} · commission ${fmtUsd(-commission)}${t.score != null ? ` · ML ${Math.round(t.score * 100)}%` : ''}. Click to show on the chart.`}
                   >
                     <div className="flex items-baseline gap-2">
                       <b className="font-medium">{t.symbol}</b>
@@ -543,6 +544,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                     <div className="flex items-baseline gap-2 text-[10px] text-muted">
                       <span>{t.entry.toFixed(dg)} → {p ? (t.direction === 'bull' ? p.bid : p.ask).toFixed(dg) : '—'}</span>
                       <span>{fmtFillShort(t)} NY</span>
+                      <span style={{ color: 'var(--red)' }} title="Round-trip commission for this open trade">COMM {fmtUsd(-commission)}</span>
                       <span className="ml-auto" style={{ color: col }}>{pl ? `${fmtSigned(pl.pips)} pips · ${fmtSigned(pl.r, 2)}R` : ''}</span>
                     </div>
                   </div>
@@ -566,7 +568,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                 const live = now >= start && now <= end
                 const past = now > end
                 return (
-                  <div key={i} className="border-l-2 py-0.5 pl-2 text-[11px]" style={{ borderColor: live ? 'var(--amber)' : past ? 'var(--line)' : 'var(--cyan)', opacity: past ? 0.45 : 1, background: 'var(--panel2)' }}>
+                  <div key={i} className="border-l-2 py-0.5 pl-2 text-[11px]" style={{ borderColor: live ? 'var(--amber)' : past ? 'var(--line)' : 'var(--cyan)', opacity: 1, background: 'var(--panel2)' }}>
                     <div className="flex items-baseline gap-2">
                       <span className="text-muted">{fmtTs(e.time)}</span>
                       <b className="font-medium">{e.currency}</b>

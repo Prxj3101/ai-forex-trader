@@ -45,7 +45,7 @@ const vaSkip = (s: MLScore) => s.keep_top30 && s.va_ok === false
 const quietSkip = (s: MLScore) => s.keep_top30 && s.va_ok !== false && s.act_ok === false
 const isTake = (s: MLScore) => s.keep_top30 && s.va_ok !== false && s.act_ok !== false
 const scoreColor = (s: MLScore) =>
-  vaSkip(s) ? '#8a94a6' : quietSkip(s) ? '#5c7c99' : s.keep_top30 ? '#00ff88' : s.keep_top50 ? '#ffc400' : '#ff2e63'
+  vaSkip(s) ? '#8a94a6' : quietSkip(s) ? '#5c7c99' : s.keep_top30 ? '#00ff9c' : s.keep_top50 ? '#ffc400' : '#ff426e'
 
 /** ML scores ko chart markers mein badlo. Fill time M5 ka hai -> us TF ki candle pe snap karo. */
 function toMarkers(scores: MLScore[], times: number[]): SeriesMarker<Time>[] {
@@ -104,27 +104,27 @@ export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, 
       autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#c3cfdf',
-        fontFamily: "'Share Tech Mono', monospace",
+        textColor: '#ffffff', fontSize: 12,
+        fontFamily: "'IBM Plex Mono', monospace",
         attributionLogo: false,
       },
-      grid: { vertLines: { color: 'rgba(0,240,255,0.10)' }, horzLines: { color: 'rgba(0,240,255,0.10)' } },
+      grid: { vertLines: { color: 'rgba(196,208,224,0.10)' }, horzLines: { color: 'rgba(196,208,224,0.10)' } },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: { color: 'rgba(0,240,255,0.5)', labelBackgroundColor: '#003a40' },
         horzLine: { color: 'rgba(0,240,255,0.5)', labelBackgroundColor: '#003a40' },
       },
-      rightPriceScale: { borderColor: 'rgba(0,240,255,0.4)' },
+      rightPriceScale: { borderColor: 'rgba(154,174,198,0.16)' },
       timeScale: {
-        borderColor: 'rgba(0,240,255,0.4)',
+        borderColor: 'rgba(154,174,198,0.16)',
         timeVisible: true,
         tickMarkFormatter: (t: Time) => fmtTick(t as number, NY),
       },
       localization: { timeFormatter: (t: Time) => fmtTs(t as number, NY) },
     })
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#00ff88', downColor: '#ff2e63', borderVisible: false,
-      wickUpColor: '#00ff88', wickDownColor: '#ff2e63',
+      upColor: '#00ff9c', downColor: '#ff426e', borderVisible: false,
+      wickUpColor: '#00ff9c', wickDownColor: '#ff426e',
     })
     const prim = new ZonesPrimitive()
     series.attachPrimitive(prim)
@@ -281,7 +281,7 @@ export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, 
         <span>TIME: NEW YORK</span>
       </div>
 
-      <div className="relative h-[430px]">
+      <div className="chart-surface relative h-[430px]">
         <div ref={boxRef} className="absolute inset-0" />
         {hud && (
           <div className="pointer-events-none absolute left-2 top-1 z-10 text-[10px] leading-5" style={{ color: 'var(--cyan)', textShadow: `0 0 6px ${rgba(theme, 0.6)}` }}>
@@ -310,11 +310,11 @@ export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, 
       </div>
       <div className="mt-1 flex flex-wrap gap-4 text-[10px] text-muted" title="Scores come from walk-forward testing: the model never saw that year during training. Available for M15/H1 from 2019, only for zones found with the BOT SETTING of this pair.">
         <span>ML arrows at fill:</span>
-        <span style={{ color: '#00ff88' }}>▲ top 30% (take)</span>
+        <span style={{ color: '#00ff9c' }}>▲ top 30% (take)</span>
         <span style={{ color: '#8a94a6' }} title="ML liked it, but the entry was on the expensive side of the last 24h value area, so the bot skips it">▲ VA SKIP (entry too expensive)</span>
         <span style={{ color: '#5c7c99' }} title="ML liked it, but the market was quieter than usual right before the touch (last 15 min tick volume below 0.9x the 24h average), so the bot skips it">▲ QUIET (market inactive)</span>
         <span style={{ color: '#ffc400' }}>▲ top 50%</span>
-        <span style={{ color: '#ff2e63' }}>▲ low score (skip)</span>
+        <span style={{ color: '#ff426e' }}>▲ low score (skip)</span>
         <span>T2/T3 = 2nd/3rd touch · 1:1 / TRAIL = exit chosen by ML · out-of-sample scores</span>
       </div>
     </div>

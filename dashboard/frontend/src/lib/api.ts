@@ -135,6 +135,7 @@ export type MLReport = {
 }
 
 export type RiskReport = {
+  combo?: { aggressive_trades: number; conservative_trades: number }
   config: {
     capital: number
     risk_pct: number
@@ -148,6 +149,9 @@ export type RiskReport = {
     daily_risk_budget_pct?: number
     house_money_pct?: number
     risk_cap_pct?: number
+    combo_enabled?: boolean
+    combo_reduce_dd_pct?: number
+    combo_recover_dd_pct?: number
   }
   braked_trades_pct?: number
   worst_day_pct?: number | null
@@ -300,6 +304,7 @@ export type LiveTrade = {
   exit_reason: string
   r: number
   lots: number
+  commission_usd?: number
   pnl: number
 }
 
@@ -315,6 +320,7 @@ export type LiveOpenTrade = {
   exit: 'tp1' | 'trail'
   score: number
   r_now: number | null
+  commission_usd?: number
   fill_time: number | null
 }
 
@@ -420,6 +426,7 @@ export type LiveTickTrade = {
   entry: number
   sl: number
   lots: number
+  commission_usd?: number
   fill_time: number | null
   filled_at?: number | null
   exit?: string
@@ -484,6 +491,12 @@ export type LiveStatus = {
     peak: number
     dd_pct: number
     total_pct: number
+    total_usd?: number
+    drawdown_usd?: number
+    commission_per_lot?: number
+    commission_total?: number
+    commission_closed?: number
+    commission_open?: number
     today_pnl: number
     month_pnl: number
     kill: boolean
@@ -493,9 +506,13 @@ export type LiveStatus = {
     kill_dd_pct: number
     daily_loss_pct: number
     daily_budget_pct: number
+    combo_enabled?: boolean
+    risk_mode?: 'aggressive' | 'conservative'
+    base_risk_pct?: number
+    risk_cap_pct?: number
   }
   open_trades?: LiveOpenTrade[]
-  closed?: { count: number; wins: number; win_pct: number | null; pnl: number; r_sum: number; pf: number | null }
+  closed?: { count: number; wins: number; win_pct: number | null; pnl: number; r_sum: number; pf: number | null; commission?: number }
   curve?: { time: number; value: number }[]
   trades?: LiveTrade[]
   decisions?: LiveDecision[]

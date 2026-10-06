@@ -15,7 +15,7 @@ export type Theme = {
 }
 
 export const THEMES: Theme[] = [
-  { id: 'cyan', label: 'Cyan', accent: '#00f0ff', rgb: '0, 240, 255' },
+  { id: 'cyan', label: 'Cyan', accent: '#00e5ff', rgb: '0, 229, 255' },
   { id: 'violet', label: 'Electric violet', accent: '#b14dff', rgb: '177, 77, 255', overrides: { structure: '#00f0ff' } },
   { id: 'gold', label: 'Gold', accent: '#ffb800', rgb: '255, 184, 0', overrides: { ml: '#ff7a1a' } },
   { id: 'blue', label: 'Electric blue', accent: '#3d8bff', rgb: '61, 139, 255' },

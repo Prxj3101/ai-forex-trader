@@ -194,12 +194,14 @@ def build_ticks(live: Path) -> dict:
     if sf.exists():
         try:
             st = json.loads(sf.read_text())
+            commission_per_lot = float((st.get("risk") or {}).get("commission_per_lot", 5.0))
             done = set(st.get("close_done", []))
             out["close_pending"] = [{"symbol": x["symbol"], "fill_time": x["fill_time"]}
                                     for x in ctl["close"] if x["id"] not in done]
             out["open"] = [{"symbol": t.get("symbol"), "direction": t.get("direction"), "entry": clean(t.get("entry")),
                             "sl": clean(t.get("sl")), "lots": clean(t.get("lots")), "exit": t.get("exit"),
                             "sl_pips": clean(t.get("sl_pips")), "score": clean(t.get("score")),
+                            "commission_usd": round(float(t.get("lots") or 0) * commission_per_lot, 2),
                             "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")),
                             "best_r": clean(t.get("best_r")), "r_now": clean(t.get("r_now")),
                             "filled_at": to_unix(pd.Timestamp(t["filled_at"])) if t.get("filled_at") else None,
@@ -280,39 +282,69 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
     month_start = float(st.get("month_start", equity))
     risk_now, braked = trade_risk_pct(cfg, equity, peak, month_start)
     today = str(trading_day(now))
+    open_state = st.get("open_trades", [])
+    open_commission = sum(float(t.get("lots") or 0) * cfg.commission_per_lot for t in open_state)
     out["account"] = dict(
         capital=cfg.capital, equity=round(equity, 2), peak=round(peak, 2),
         dd_pct=round((peak - equity) / peak * 100, 2) if peak else 0.0,
         total_pct=round((equity / cfg.capital - 1) * 100, 2),
+        total_usd=round(equity - cfg.capital, 2),
+        drawdown_usd=round(max(peak - equity, 0.0), 2),
+        commission_per_lot=round(cfg.commission_per_lot, 2),
+        commission_total=round(open_commission, 2),
+        commission_closed=0.0,
+        commission_open=round(open_commission, 2),
         today_pnl=round(float((st.get("day_pnl") or {}).get(today, 0.0)), 2),
         month_pnl=round(equity - month_start, 2), kill=bool(st.get("kill")), braked=bool(braked),
         risk_now_pct=round(risk_now, 3), brake_dd_pct=cfg.brake_dd_pct, kill_dd_pct=cfg.kill_dd_pct,
         daily_loss_pct=cfg.daily_loss_pct, daily_budget_pct=cfg.daily_risk_budget_pct,
+        combo_enabled=cfg.combo_enabled, risk_mode=st.get('risk_mode'),
+        base_risk_pct=cfg.risk_pct, risk_cap_pct=cfg.risk_cap_pct,
     )
     out["open_trades"] = [
         {k: clean(t.get(k)) if not isinstance(t.get(k), str) else t.get(k)
          for k in ("symbol", "direction", "entry", "sl", "sl_pips", "lots", "risk_usd", "risk_pct", "exit", "score", "r_now")}
+        | {"commission_usd": round(float(t.get("lots") or 0) * cfg.commission_per_lot, 2)}
         | {"fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
-        for t in st.get("open_trades", [])
+        for t in open_state
     ]
 
     ct = live / "closed_trades.csv"
+    # Older/local shadow runs may only have the combined snapshot. It still
+    # contains the closed rows, so use it when the append-only file is absent.
+    if not ct.exists() and (live / "shadow_trades.csv").exists():
+        ct = live / "shadow_trades.csv"
     if ct.exists():
         c = pd.read_csv(ct)
+        if "status" in c:
+            c = c[c["status"].astype(str).str.lower() == "closed"].copy()
         pnl = c["pnl"].astype(float) if "pnl" in c else pd.Series(dtype=float)
         r = c["r"].astype(float) if "r" in c else pd.Series(dtype=float)
+        lots = pd.to_numeric(c["lots"], errors="coerce").fillna(0.0) if "lots" in c else pd.Series(0.0, index=c.index)
+        if "commission_usd" in c:
+            commission = pd.to_numeric(c["commission_usd"], errors="coerce").fillna(lots * cfg.commission_per_lot)
+        else:
+            commission = lots * cfg.commission_per_lot
+        closed_commission = float(commission.sum())
+        c = c.assign(commission_usd=commission.round(2))
+        out["account"].update(
+            commission_total=round(closed_commission + open_commission, 2),
+            commission_closed=round(closed_commission, 2),
+            commission_open=round(open_commission, 2),
+        )
         out["closed"] = dict(count=int(len(c)), wins=int((pnl > 0).sum()),
                              win_pct=round(float((pnl > 0).mean() * 100), 1) if len(c) else None,
-                             pnl=round(float(pnl.sum()), 2), r_sum=round(float(r.sum()), 2), pf=_pf(pnl))
+                             pnl=round(float(pnl.sum()), 2), r_sum=round(float(r.sum()), 2), pf=_pf(pnl),
+                             commission=round(closed_commission, 2))
         c = c.assign(exit_ts=[to_unix(pd.Timestamp(x)) for x in c["exit_time"]],
                      fill_ts=[to_unix(pd.Timestamp(x)) for x in c["fill_time"]])
         eq = cfg.capital + pnl.cumsum()
         out["curve"] = [{"time": int(t), "value": round(float(v), 2)} for t, v in zip(c["exit_ts"], eq) if t]
-        cols = [k for k in ("symbol", "direction", "fill_ts", "exit_ts", "entry", "exit", "exit_reason", "r", "lots", "pnl")
+        cols = [k for k in ("symbol", "direction", "fill_ts", "exit_ts", "entry", "exit", "exit_reason", "r", "lots", "commission_usd", "pnl")
                 if k in c]
         out["trades"] = _clean_rows(c[cols].tail(trades).iloc[::-1])
     else:
-        out["closed"] = dict(count=0, wins=0, win_pct=None, pnl=0.0, r_sum=0.0, pf=None)
+        out["closed"] = dict(count=0, wins=0, win_pct=None, pnl=0.0, r_sum=0.0, pf=None, commission=0.0)
         out["curve"], out["trades"] = [], []
 
     d = _tail_csv(live / "decisions.csv", decisions)

@@ -1,47 +1,29 @@
-/*
-  AI FOREX TRADER ka logo (original design): trading + AI ka combo.
-  - Bahar: hexagon (tech/AI ka shape) + ghoomta dashed ring
-  - Andar: 3 candlesticks (trading)
-  - Unke upar se ek "neural" trend line jiske joints glowing nodes hain (AI brain ke neurons),
-    jo upar arrow pe khatam hoti hai (growth). Line baar baar khud draw hoti hai.
-*/
+import { useId } from 'react'
 import { useTheme } from '../lib/theme'
 
+// An ascending A: the two strokes represent structure and a rising market.
 export default function Logo({ size = 48 }: { size?: number }) {
-  const a = useTheme().theme.accent
+  const id = useId().replace(/:/g, '')
+  const accent = useTheme().theme.accent
   return (
-    <svg viewBox="0 0 48 48" width={size} height={size} className="flex-none overflow-visible" style={{ filter: `drop-shadow(0 0 6px ${a})` }}>
-      <g style={{ transformOrigin: '24px 24px', animation: 'spin 16s linear infinite' }}>
-        <circle cx="24" cy="24" r="23.5" fill="none" stroke={a} strokeWidth="0.8" strokeDasharray="2 4" opacity="0.7" />
-      </g>
-      <path d="M24 2.5 L42.6 13.25 L42.6 34.75 L24 45.5 L5.4 34.75 L5.4 13.25 Z" fill="#030608" stroke={a} strokeWidth="1.6" />
-      <path d="M24 6.5 L39.1 15.25 L39.1 32.75 L24 41.5 L8.9 32.75 L8.9 15.25 Z" fill="none" stroke={a} strokeWidth="0.5" opacity="0.35" />
-
-      {/* candlesticks */}
-      <g strokeWidth="1.2">
-        <line x1="15" y1="25" x2="15" y2="37" stroke="#00ff88" />
-        <rect x="13" y="28" width="4" height="7" fill="#00ff88" />
-        <line x1="22" y1="21" x2="22" y2="33" stroke="#ff2e63" />
-        <rect x="20" y="23" width="4" height="6" fill="#ff2e63" />
-        <line x1="29" y1="14" x2="29" y2="29" stroke="#00ff88" />
-        <rect x="27" y="16" width="4" height="10" fill="#00ff88" />
-      </g>
-
-      {/* neural trend line + nodes */}
-      <polyline
-        points="10,33 17,25 23,28 34,13"
-        fill="none"
-        stroke="#ffc400"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="logo-draw"
-      />
-      <path d="M34 13 L30 13.6 M34 13 L33.6 17" stroke="#ffc400" strokeWidth="1.6" strokeLinecap="round" />
-      {[[10, 33], [17, 25], [23, 28], [34, 13]].map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="1.9" fill="#fff" stroke="#ffc400" strokeWidth="0.8"
-          style={{ animation: `pulse 1.6s ease-in-out ${i * 0.3}s infinite` }} />
-      ))}
+    <svg viewBox="0 0 64 64" width={size} height={size} className="logo-mark flex-none" role="img" aria-label="AI Forex Trader logo">
+      <defs>
+        <linearGradient id={`${id}-case`} x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#383d43" /><stop offset="1" stopColor="#1b1e22" />
+        </linearGradient>
+        <linearGradient id={`${id}-metal`} x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#f0f5f8" /><stop offset=".5" stopColor="#b8c2cc" /><stop offset="1" stopColor="#747f8c" />
+        </linearGradient>
+        <linearGradient id={`${id}-signal`} x1="0" y1="1" x2="1" y2="0">
+          <stop stopColor="#358aa6" /><stop offset="1" stopColor={accent} />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="62" height="62" rx="16" fill={`url(#${id}-case)`} stroke="#555d67" strokeOpacity=".5" />
+      <rect x="6" y="6" width="52" height="52" rx="12" fill="#1c2025" stroke="#111417" />
+      <path d="M15 45 29 17h7l14 28h-9L32.5 27 24 45Z" fill={`url(#${id}-metal)`} />
+      <path d="m24 41 7-7 5 3 11-12" fill="none" stroke="#181c21" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m24 41 7-7 5 3 11-12m-7 0h7v7" fill="none" stroke={`url(#${id}-signal)`} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="18" cy="16" r="1.5" fill={accent} opacity=".8" />
     </svg>
   )
 }

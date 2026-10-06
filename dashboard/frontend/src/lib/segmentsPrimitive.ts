@@ -40,7 +40,7 @@ class SegRenderer implements IPrimitivePaneRenderer {
       const vr = scope.verticalPixelRatio
       for (const d of this.items) {
         const s = d.s
-        ctx.globalAlpha = s.faded ? 0.45 : 1
+        ctx.globalAlpha = s.faded ? 0.65 : 1
         ctx.strokeStyle = s.color
         ctx.lineWidth = (s.width ?? 1.5) * hr
         ctx.setLineDash(s.dash ? [5 * hr, 4 * hr] : [])
@@ -50,8 +50,12 @@ class SegRenderer implements IPrimitivePaneRenderer {
         ctx.stroke()
         ctx.setLineDash([])
         if (s.label) {
+          ctx.globalAlpha = 1
           ctx.fillStyle = s.labelColor ?? s.color
-          ctx.font = `${10 * vr}px 'Share Tech Mono', monospace`
+          ctx.font = `700 ${12 * vr}px 'IBM Plex Mono', monospace`
+          ctx.strokeStyle = '#090b0e'
+          ctx.lineWidth = 3 * hr
+          ctx.strokeText(s.label, (Math.max(d.x2, d.x1 + 3) + 4) * hr, (d.y + 3) * vr)
           ctx.fillText(s.label, (Math.max(d.x2, d.x1 + 3) + 4) * hr, (d.y + 3) * vr)
         }
         ctx.globalAlpha = 1

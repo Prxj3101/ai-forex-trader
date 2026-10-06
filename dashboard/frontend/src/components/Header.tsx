@@ -20,7 +20,7 @@ function Led({ label, color, on, speed = '1.4s' }: { label: string; color: strin
 
 function Stat({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="text-center">
+    <div className="header-stat text-center">
       <small className="block text-[9px] tracking-[2px] text-muted">{label}</small>
       <b className="font-display text-[17px] font-medium tracking-[2px]" style={{ color }}>{value}</b>
     </div>
@@ -36,8 +36,8 @@ export default function Header({ pair, connected, dataOk, mlOk, tabs }: Props) {
       <div className="flex items-center gap-3.5">
         <Logo size={46} />
         <div>
-          <h1 className="font-display glow-cyan m-0 text-[17px] font-bold tracking-[4px]">AI FOREX TRADER</h1>
-          <small className="mt-0.5 block text-[10px] tracking-[3px] text-muted">TRADING COMMAND CENTER // v0.1</small>
+          <h1 className="brand-title font-display m-0 text-[17px]">AI FOREX TRADER</h1>
+          <small className="brand-subtitle mt-1 block text-muted">TRADING COMMAND CENTER // v0.1</small>
         </div>
       </div>
 
@@ -48,11 +48,20 @@ export default function Header({ pair, connected, dataOk, mlOk, tabs }: Props) {
         <Stat label="INDIA (IST)" value={clock(IST, now)} color="var(--text)" />
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-3">
+      <div className="header-controls flex flex-wrap items-center justify-end">
         <Led label="ENGINE" color="var(--green)" on={connected} />
         <Led label="DATA" color="var(--green)" on={dataOk} speed="1.1s" />
         <Led label="BACKTEST" color="var(--amber)" on={connected} speed="2.2s" />
         <Led label="ML" color="var(--cyan)" on={mlOk} speed="1.8s" />
+        <a
+          className="btn report-link"
+          href="/reports/trade-statistics.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open detailed 2019–2026 trade statistics"
+        >
+          STATS REPORT
+        </a>
         {tabs}
       </div>
     </header>

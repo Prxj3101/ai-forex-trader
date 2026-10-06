@@ -326,7 +326,7 @@ import json  # noqa: E402
 RESEARCH = ROOT / "data" / "research"
 ml_lock = threading.Lock()
 SIM_CAPITAL = 10_000     # account simulation ka starting capital (USD)
-SIM_RISK = 0.25          # % risk per trade (+ 5% drawdown brake + 9% kill switch, src/risk/portfolio_sim.py RiskConfig)
+SIM_RISK = 0.5           # Combo: 0.5% -> 0.25% at 3% DD, recover at 1% DD.
 
 
 def run_ml_train(symbols: list[str]) -> None:
@@ -350,7 +350,7 @@ def run_ml_train(symbols: list[str]) -> None:
         from src.risk import portfolio_sim
         bus.emit("risk", f"Simulating ${SIM_CAPITAL:,.0f} account ({SIM_RISK}% risk, ${walkforward.COMMISSION:g}/lot)", progress=30)
         sim = portfolio_sim.run(SIM_CAPITAL, SIM_RISK, walkforward.COMMISSION,
-                                log=lambda m: bus.emit("risk", m.strip(), progress=60))
+                                log=lambda m: bus.emit("risk", m.strip(), progress=60), combo=True)
         portfolio_sim.save(sim)
         bus.emit("risk", f"Account sim: {sim['cagr_pct']}%/yr, max drawdown {sim['max_drawdown_pct']}%, "
                          f"{sim['trades_per_month']} trades/month", status="done", progress=100)

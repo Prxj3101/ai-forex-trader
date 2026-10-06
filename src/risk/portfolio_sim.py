@@ -38,7 +38,7 @@ Pehle ML train hona chahiye (ml_scores.parquet), dashboard ka RETRAIN ya walkfor
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -89,6 +89,35 @@ class RiskConfig:
     slippage_pips: float = 0.2
     min_lot: float = 0.01
     lot_step: float = 0.01
+    combo_enabled: bool = False
+    combo_reduce_dd_pct: float = 3.0
+    combo_recover_dd_pct: float = 1.0
+
+
+@dataclass
+class RiskMode:
+    """Sticky account mode: reduce at 3% DD, recover only at 1% DD."""
+    aggressive: bool = True
+
+    def select(self, cfg: RiskConfig, equity: float, peak: float) -> None:
+        if not cfg.combo_enabled:
+            return
+        dd = max(0.0, (peak - equity) / peak * 100) if peak > 0 else 0.0
+        if dd >= cfg.combo_reduce_dd_pct - 1e-9:
+            self.aggressive = False
+        elif dd <= cfg.combo_recover_dd_pct + 1e-9:
+            self.aggressive = True
+        cfg.risk_pct = 0.5 if self.aggressive else 0.25
+        cfg.risk_cap_pct = 1.0 if self.aggressive else 0.5
+        cfg.daily_loss_pct = 2.0 if self.aggressive else 1.5
+        cfg.daily_risk_budget_pct = 2.5 if self.aggressive else 2.0
+        cfg.kill_dd_pct = 10.0
+
+
+def combo_config(capital: float = 10000, commission: float = 5.0) -> RiskConfig:
+    return RiskConfig(capital=capital, commission_per_lot=commission, risk_pct=0.5,
+                      risk_cap_pct=1.0, daily_loss_pct=2.0, daily_risk_budget_pct=2.5,
+                      kill_dd_pct=10.0, combo_enabled=True)
 
 
 # ----------------------------------------------------------------------
@@ -173,6 +202,9 @@ def daily_ok(cfg: RiskConfig, day_start: float, day_pnl: float, open_risk_usd: f
 # 2) Simulation: time ke hisaab se ek ek trade, asli account jaisa
 # ----------------------------------------------------------------------
 def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
+    report_cfg = replace(cfg)
+    cfg = replace(cfg)  # Mode changes belong to this account replay only.
+    mode = RiskMode()
     equity = cfg.capital
     peak = equity                      # ab tak ka sabse upar ka balance (brake / kill switch isi se naapte hain)
     paused_until = None                # kill switch ke baad kab tak naye trades band
@@ -206,6 +238,7 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
         if equity <= 0:
             skip("account blown")
             continue
+        mode.select(cfg, equity, peak)
         dd = (peak - equity) / peak * 100
         # KILL SWITCH: bahut gira -> ruk jao (live mein tum review karke resume karoge)
         if dd >= cfg.kill_dd_pct and kill_peak != peak:
@@ -261,15 +294,19 @@ def simulate(cands: pd.DataFrame, cfg: RiskConfig) -> dict:
         pnl = c.r * risk_usd - cfg.commission_per_lot * lots - slip_usd
         open_pos.append(dict(symbol=c.symbol, direction=c.direction, usd_side=side, fill_time=c.fill_time,
                              exit_time=c.exit_time, lots=round(float(lots), 2), risk_usd=risk_usd,
-                             r=c.r, pnl=pnl, exit=c.exit, reason=c.reason, braked=braked, risk_pct=risk_pct))
+                             r=c.r, pnl=pnl, exit=c.exit, reason=c.reason, braked=braked, risk_pct=risk_pct,
+                             base_risk_pct=cfg.risk_pct, aggressive=mode.aggressive))
     close_until(pd.Timestamp.max.tz_localize("UTC"))
-    res = report(closed, curve, skipped, cfg, len(cands))
+    res = report(closed, curve, skipped, report_cfg, len(cands))
     dl = [day_pnl[d] / day_start[d] * 100 for d in day_pnl if day_start.get(d)]
     res["worst_day_pct"] = round(float(min(dl)), 2) if dl else None      # broker trading day (NY 5 PM se NY 5 PM)
     res["braked_trades_pct"] = round(100 * float(np.mean([p["braked"] for p in closed])), 1) if closed else 0.0
     rp = [p["risk_pct"] for p in closed]
     res["risk_used"] = dict(avg_pct=round(float(np.mean(rp)), 3), max_pct=round(float(np.max(rp)), 3),
-                            boosted_trades_pct=round(100 * float(np.mean([r > cfg.risk_pct + 1e-9 for r in rp])), 1)) if rp else None
+                            boosted_trades_pct=round(100 * float(np.mean([p['risk_pct'] > p['base_risk_pct'] + 1e-9 for p in closed])), 1)) if rp else None
+    if cfg.combo_enabled:
+        res['combo'] = dict(aggressive_trades=sum(p['aggressive'] for p in closed),
+                            conservative_trades=sum(not p['aggressive'] for p in closed))
     res["kill_switch_events"] = kill_events
     return res
 
@@ -320,14 +357,19 @@ def report(closed: list[dict], curve: list, skipped: dict, cfg: RiskConfig, n_ca
     )
 
 
-def run(capital: float = 1000, risk_pct: float = 0.25, commission: float = 5.0, min_sl_pips: float = 0.0,
-        symbols=None, cands=None, profile_name: str | None = None, guard=None, log=print) -> dict:
+def run(capital: float = 1000, risk_pct: float | None = None, commission: float = 5.0, min_sl_pips: float = 0.0,
+        symbols=None, cands=None, profile_name: str | None = None, guard=None, log=print,
+        combo: bool | None = None) -> dict:
     """profile_name: config.ACCOUNT_PROFILES key (None = config.ACCOUNT_PROFILE).
-    Prop profiles apply the news rules (src/risk/news_rules.py) before the simulation."""
+    Prop profiles apply the news rules (src/risk/news_rules.py) before the simulation.
+    Default is the approved combo. An explicit risk_pct keeps single-mode research
+    calls compatible; combo=True explicitly opts those callers into switching."""
     from src import config
     from src.risk.news_rules import load_guard
 
-    cfg = RiskConfig(capital=capital, risk_pct=risk_pct, commission_per_lot=commission, min_sl_pips=min_sl_pips)
+    combo = risk_pct is None if combo is None else combo
+    cfg = combo_config(capital, commission) if combo else RiskConfig(capital=capital, risk_pct=0.25 if risk_pct is None else risk_pct, commission_per_lot=commission)
+    cfg.min_sl_pips = min_sl_pips
     cands = load_candidates(symbols) if cands is None else cands
     if symbols:
         cands = cands[cands["symbol"].isin(symbols)].reset_index(drop=True)
@@ -367,7 +409,7 @@ def save(res: dict) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Risk Agent: realistic portfolio simulation")
     ap.add_argument("--capital", type=float, default=1000)
-    ap.add_argument("--risk", type=float, default=0.25, help="risk per trade, %% of equity")
+    ap.add_argument("--risk", type=float, default=None, help="single-mode risk per trade; disables combo")
     ap.add_argument("--commission", type=float, default=5.0, help="USD per 1.00 lot round trip")
     ap.add_argument("--min-sl", type=float, default=0.0, help="skip trades with SL smaller than this (pips)")
     ap.add_argument("--profile", default=None, help="account profile: prop_master / prop_evaluation / real_broker "
@@ -376,7 +418,8 @@ def main() -> None:
 
     print("Loading ML-selected trades (out-of-sample) and replaying exits on M5...")
     cands = load_candidates()
-    res = run(a.capital, a.risk, a.commission, a.min_sl, cands=cands, profile_name=a.profile)
+    res = run(a.capital, a.risk if a.risk is not None else 0.5, a.commission, a.min_sl,
+              cands=cands, profile_name=a.profile, combo=a.risk is None)
     show = {k: v for k, v in res.items() if k not in ("equity_curve", "config")}
     print(json.dumps(show, indent=2, default=str))
     save(res)

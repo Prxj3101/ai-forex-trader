@@ -47,7 +47,7 @@ function MiniCurve({ data, start }: { data: { time: number; value: number }[]; s
     if (!box.current) return
     const c = createChart(box.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#c3cfdf', fontFamily: "'Share Tech Mono', monospace", attributionLogo: false },
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#ffffff', fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.06)' } },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true },
@@ -332,10 +332,16 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   }
 
   const a = data.account
-  const c = data.closed ?? { count: 0, wins: 0, win_pct: null, pnl: 0, r_sum: 0, pf: null }
+  const c = data.closed ?? { count: 0, wins: 0, win_pct: null, pnl: 0, r_sum: 0, pf: null, commission: 0 }
   const ddColor = a.dd_pct >= a.kill_dd_pct ? 'var(--red)' : a.dd_pct >= a.brake_dd_pct ? 'var(--amber)' : 'var(--text)'
   // khule trades: ticks (har ~1 s) se -> naya trade seconds mein dikhe; ticks na hon toh 15 s wala data
   const open: LiveTickTrade[] = ticks?.updated ? ticks.open : (data.open_trades ?? [])
+  const commissionPerLot = a.commission_per_lot ?? 5
+  const openCommission = a.commission_open ?? open.reduce((sum, t) => sum + (t.commission_usd ?? t.lots * commissionPerLot), 0)
+  const closedCommission = a.commission_closed ?? c.commission ?? (data.trades ?? []).reduce((sum, t) => sum + (t.commission_usd ?? t.lots * commissionPerLot), 0)
+  const commissionTotal = a.commission_total ?? closedCommission + openCommission
+  const totalUsd = a.total_usd ?? a.equity - a.capital
+  const drawdownUsd = a.drawdown_usd ?? Math.max(a.peak - a.equity, 0)
   // live P&L har trade ka (ticks se, har ~1 s). Bhav na ho toh null -> bot ka 5-min wala r_now dikhega
   const live = open.map((t) => {
     const p = ticks?.prices[t.symbol]
@@ -362,17 +368,23 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         </div>
       )}
 
-      <div className="mb-3 grid grid-cols-3 gap-x-3 gap-y-2.5 border p-2.5 sm:grid-cols-5 xl:grid-cols-9" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}>
+      {a.combo_enabled && (
+        <div className="mb-2 text-[10px] tracking-wider text-muted">
+          COMBO · {a.risk_mode?.toUpperCase()} · BASE {a.base_risk_pct}% · CAP {a.risk_cap_pct}% · REDUCE AT 3% DD / RECOVER AT 1% DD · DAILY STOP {a.daily_loss_pct}% / BUDGET {a.daily_budget_pct}%
+        </div>
+      )}
+      <div className="mb-3 grid grid-cols-3 gap-x-3 gap-y-2.5 border p-2.5 sm:grid-cols-5 xl:grid-cols-10" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}>
         <Stat label="EQUITY" value={usd(a.equity)} color="var(--cyan)" tip={`Started with ${usd(a.capital)} · closed trades only (open trades not counted until they close)`} />
-        <Stat label="TOTAL" value={`${signed(a.total_pct)}%`} color={pnlColor(a.total_pct)} tip="Change since the start of the shadow account" />
+        <Stat label="TOTAL" value={`${fmtUsd(totalUsd)} (${signed(a.total_pct)}%)`} color={pnlColor(a.total_pct)} tip={`Change since the start of the shadow account: ${fmtUsd(totalUsd)} after closed-trade costs`} />
         <Stat label="TODAY" value={usd(a.today_pnl)} color={pnlColor(a.today_pnl)} tip={`Broker day (5 PM to 5 PM New York). Daily stop at -${a.daily_loss_pct}%, daily risk budget ${a.daily_budget_pct}%`} />
         <Stat label="THIS MONTH" value={usd(a.month_pnl)} color={pnlColor(a.month_pnl)} tip="Profit this month. Feeds the house money risk boost." />
-        <Stat label="DRAWDOWN" value={`-${a.dd_pct.toFixed(2)}%`} color={ddColor} tip={`From the peak ${usd(a.peak)}. Brake at -${a.brake_dd_pct}%, kill switch at -${a.kill_dd_pct}%`} />
+        <Stat label="DRAWDOWN" value={`${fmtUsd(-drawdownUsd)} (-${a.dd_pct.toFixed(2)}%)`} color={ddColor} tip={`From the peak ${usd(a.peak)}: ${fmtUsd(-drawdownUsd)}. Brake at -${a.brake_dd_pct}%, kill switch at -${a.kill_dd_pct}%`} />
+        <Stat label="COMM. TOTAL" value={fmtUsd(-commissionTotal)} color="var(--red)" tip={`Round-trip commission: ${fmtUsd(-closedCommission)} on closed trades + ${fmtUsd(-openCommission)} estimated for open trades`} />
         <Stat
           label="RISK NOW"
           value={a.kill ? 'STOPPED' : `${a.risk_now_pct.toFixed(2)}%`}
           color={a.kill ? 'var(--red)' : a.braked ? 'var(--amber)' : 'var(--text)'}
-          tip={a.kill ? 'Kill switch active: no new trades until reviewed' : a.braked ? 'Drawdown brake active: risk cut in half' : 'Risk per trade for the next trade (0.25% + house money, max 0.5%)'}
+          tip={a.kill ? 'Kill switch active: no new trades until reviewed' : a.braked ? 'Drawdown brake active: risk cut in half' : a.combo_enabled ? `${a.risk_mode} mode: base ${a.base_risk_pct}% + house money, cap ${a.risk_cap_pct}%` : 'Risk per trade for the next trade including house money'}
         />
         <Stat label="TRADES" value={`${c.count}`} tip={`${c.wins} winners`} />
         <Stat label="WIN RATE" value={c.win_pct == null ? '—' : `${c.win_pct}%`} tip="Closed trades with profit after costs" />
@@ -399,11 +411,12 @@ export default function LivePanel({ connected }: { connected: boolean }) {
           ) : (
             <table className="mb-3 w-full text-[10px]">
               <thead className="text-muted"><tr>
-                <th className="text-left font-normal">PAIR</th><th className="text-left font-normal">SIDE</th>
-                <th className="text-right font-normal">ENTRY</th><th className="text-right font-normal">LOTS</th>
+                <th className="text-left font-normal">PAIR</th><th className="text-right font-normal">LOTS</th><th className="text-left font-normal">SIDE</th>
+                <th className="text-right font-normal">ENTRY</th>
                 <th className="text-right font-normal">EXIT</th>
                 <th className="text-right font-normal" title="Live price (bid for a buy, ask for a sell)">NOW</th>
                 <th className="text-right font-normal">PIPS</th>
+                <th className="text-right font-normal" title="Round-trip commission charged/estimated for this trade">COMM.</th>
                 <th className="text-right font-normal" title="Live profit / loss in dollars, after commission">P&amp;L</th>
                 <th className="text-right font-normal" title="Live profit / loss in R (1R = the stop loss distance)">R</th>
                 <th className="font-normal" />
@@ -414,15 +427,17 @@ export default function LivePanel({ connected }: { connected: boolean }) {
                   const px = ticks?.prices[t.symbol]
                   const now = px ? (t.direction === 'bull' ? px.bid : px.ask) : null
                   const r = p ? p.r : t.r_now
+                  const commission = t.commission_usd ?? t.lots * commissionPerLot
                   return (
                     <tr key={i} title={`Filled ${fmtFill(t)} NY · SL ${t.sl}${t.sl_pips != null ? ` (${t.sl_pips} pips)` : ''}${t.score != null ? ` · ML score ${(t.score * 100).toFixed(0)}%` : ''}`}>
                       <td>{t.symbol}</td>
+                      <td className="text-right">{t.lots}</td>
                       <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'}</td>
                       <td className="text-right">{t.entry}</td>
-                      <td className="text-right">{t.lots}</td>
                       <td className="text-right">{t.exit === 'trail' ? 'TRAIL' : '1:1'}</td>
                       <td className="text-right">{now ?? '—'}</td>
                       <td className="text-right" style={{ color: pnlColor(p?.pips ?? 0) }}>{p ? fmtSigned(p.pips) : '—'}</td>
+                      <td className="text-right" style={{ color: 'var(--red)' }}>{usd(-commission)}</td>
                       <td className="text-right" style={{ color: pnlColor(p?.usd ?? 0) }}>{p ? fmtUsd(p.usd) : '—'}</td>
                       <td className="text-right" style={{ color: pnlColor(r ?? 0) }}>{r == null ? '—' : signed(r)}</td>
                       <td className="pl-1 text-right">
@@ -445,15 +460,17 @@ export default function LivePanel({ connected }: { connected: boolean }) {
           ) : (
             <div className="max-h-[210px] overflow-y-auto">
               <table className="w-full text-[10px]">
-                <thead className="sticky top-0 text-muted" style={{ background: 'var(--panel)' }}><tr><th className="text-left font-normal">CLOSED (NY)</th><th className="text-left font-normal">PAIR</th><th className="text-left font-normal">SIDE</th><th className="text-right font-normal">EXIT</th><th className="text-right font-normal">R</th><th className="text-right font-normal">P&amp;L</th></tr></thead>
+              <thead className="sticky top-0 text-muted" style={{ background: 'var(--panel)' }}><tr><th className="text-left font-normal">CLOSED (NY)</th><th className="text-left font-normal">PAIR</th><th className="text-right font-normal">LOTS</th><th className="text-left font-normal">SIDE</th><th className="text-right font-normal">EXIT</th><th className="text-right font-normal">R</th><th className="text-right font-normal">COMM.</th><th className="text-right font-normal">P&amp;L</th></tr></thead>
                 <tbody>
                   {trades.map((t, i) => (
-                    <tr key={i} title={`Filled ${t.fill_ts ? fmtTs(t.fill_ts) : '?'} NY at ${t.entry} · ${t.lots} lots · closed by ${t.exit_reason}`}>
+                    <tr key={i} title={`Filled ${t.fill_ts ? fmtTs(t.fill_ts) : '?'} NY at ${t.entry} · ${t.lots} lots · commission ${usd(-(t.commission_usd ?? t.lots * commissionPerLot))} · closed by ${t.exit_reason}`}>
                       <td className="text-muted">{t.exit_ts ? fmtTs(t.exit_ts) : '—'}</td>
                       <td>{t.symbol}</td>
+                      <td className="text-right">{t.lots}</td>
                       <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'}</td>
                       <td className="text-right">{t.exit === 'trail' ? 'TRAIL' : '1:1'} · {t.exit_reason?.toUpperCase()}</td>
                       <td className="text-right" style={{ color: pnlColor(t.r) }}>{signed(t.r)}</td>
+                      <td className="text-right" style={{ color: 'var(--red)' }}>{usd(-(t.commission_usd ?? t.lots * commissionPerLot))}</td>
                       <td className="text-right" style={{ color: pnlColor(t.pnl) }}>{usd(t.pnl)}</td>
                     </tr>
                   ))}

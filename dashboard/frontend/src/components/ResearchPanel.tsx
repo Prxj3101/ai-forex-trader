@@ -97,7 +97,7 @@ function EquityChart({ report }: { report: ResearchV2Report }) {
     if (!box.current) return
     const c = createChart(box.current, {
       autoSize: true,
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#c3cfdf', fontFamily: "'Share Tech Mono', monospace", attributionLogo: false },
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#ffffff', fontSize: 12, fontFamily: "'IBM Plex Mono', monospace", attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: 'rgba(255,255,255,0.06)' } },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, tickMarkFormatter: (t: Time) => new Date((t as number) * 1000).getUTCFullYear().toString() },

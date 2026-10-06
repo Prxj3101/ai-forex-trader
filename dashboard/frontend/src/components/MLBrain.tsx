@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
-import type { MLReport } from '../lib/api'
+import type { MLReport, RiskReport } from '../lib/api'
 import { rgba, useTheme } from '../lib/theme'
 
-type Props = { report: MLReport | null; training: boolean; onTrain: () => void; connected: boolean }
+type Props = { report: MLReport | null; accountReport: RiskReport | null; training: boolean; onTrain: () => void; connected: boolean }
 
 // Feature ke code-names ko dashboard ke liye simple English mein
 const FEATURE_LABELS: Record<string, string> = {
@@ -36,10 +36,10 @@ const FEATURE_LABELS: Record<string, string> = {
   sl_pips: 'Stop size (pips)',
 }
 
-const BUCKET_COLORS = ['#ff2e63', '#ff8a3d', '#ffc400', '#9be15d', '#00ff88']
+const BUCKET_COLORS = ['#ff426e', '#ff8a3d', '#ffd000', '#9be15d', '#00ff9c']
 
 // ML model ka panel: trained hai toh asli walk-forward results, warna NOT TRAINED
-export default function MLBrain({ report, training, onTrain, connected }: Props) {
+export default function MLBrain({ report, accountReport, training, onTrain, connected }: Props) {
   const { theme } = useTheme()
   const ref = useRef<HTMLCanvasElement>(null)
   const level = useRef(0)   // 0 = not trained (dim), 1 = trained, 2 = training (bahut active)
@@ -74,7 +74,7 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
       for (let li = 0; li < layers.length - 1; li++) {
         for (const a of pos[li]) {
           for (const b of pos[li + 1]) {
-            ctx.strokeStyle = rgba(theme, lv ? 0.2 : 0.1)
+            ctx.strokeStyle = rgba(theme, lv ? 0.38 : 0.1)
             ctx.beginPath()
             ctx.moveTo(a[0], a[1])
             ctx.lineTo(b[0], b[1])
@@ -100,7 +100,7 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
         l.forEach(([x, y]) => {
           const glow = 0.5 + 0.5 * Math.sin(t / 400 + x + y)
           const out = li === layers.length - 1
-          ctx.fillStyle = out ? (lv ? '#ffc400' : '#9aa8bd') : rgba(theme, (lv ? 0.6 : 0.4) + 0.4 * glow)
+          ctx.fillStyle = out ? (lv ? '#ffd000' : '#9aa8bd') : rgba(theme, (lv ? 0.85 : 0.4) + (lv ? 0.15 : 0.4) * glow)
           ctx.beginPath()
           ctx.arc(x, y, out ? 5 : 2.4, 0, Math.PI * 2)
           ctx.fill()
@@ -114,8 +114,9 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
 
   const all = report?.summary.find((s) => s.keep === 1)
   const bot = report?.bot ?? null
+  const combo = accountReport?.config.combo_enabled ? accountReport : null
   const lastYear = report ? Math.max(...report.by_year.map((y) => y.year)) : 0
-  const gauge = bot?.win_pct ?? report?.score_buckets[report.score_buckets.length - 1]?.real_win_pct ?? 0
+  const gauge = combo?.win_pct ?? bot?.win_pct ?? report?.score_buckets[report.score_buckets.length - 1]?.real_win_pct ?? 0
   const netTag = report?.net ? 'NET' : 'GROSS'
   const status = training ? 'TRAINING' : trained ? 'TRAINED' : 'NOT TRAINED'
   const statusColor = training ? 'var(--cyan)' : trained ? 'var(--green)' : 'var(--amber)'
@@ -125,13 +126,13 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
       <div className="ptitle"><span>ML BRAIN</span><em>ZONE SCORING</em></div>
 
       <div className="flex items-center gap-3">
-        <div className="relative h-[110px] w-[110px] flex-none" title="Win rate of the trades the bot would actually take (M15 first touch, ML top 30%, exit brain), after costs, on years the model never saw">
+        <div className="relative h-[110px] w-[110px] flex-none" title={combo ? 'Win rate of executed combo account trades after position limits, news blocks and trading costs' : 'Win rate of strategy-selected trades after costs, on years the model never saw'}>
           <div className="absolute inset-0 rounded-full border border-dashed" style={{ borderColor: rgba(theme, 0.35), animation: `spin ${training ? 3 : 12}s linear infinite` }} />
           <div
             className="absolute inset-[6px] rounded-full"
             style={{
               background: trained
-                ? `conic-gradient(#ffc400 ${gauge * 3.6}deg, rgba(255,255,255,0.06) 0)`
+                ? `conic-gradient(#ffd000 ${gauge * 3.6}deg, rgba(255,255,255,0.06) 0)`
                 : 'rgba(255,255,255,0.06)',
               mask: 'radial-gradient(circle, transparent 36px, #000 37px)',
               WebkitMask: 'radial-gradient(circle, transparent 36px, #000 37px)',
@@ -139,10 +140,10 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
             }}
           />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <b className="font-display text-2xl" style={{ color: trained ? '#ffc400' : 'var(--muted)' }}>
-              {trained ? `${gauge.toFixed(0)}%` : '--'}
+            <b className="font-display text-2xl" style={{ color: trained ? '#ffd000' : 'var(--muted)' }}>
+              {trained ? `${gauge.toFixed(1)}%` : '--'}
             </b>
-            <small className="text-center text-[8px] leading-3 tracking-wider text-muted">BOT WIN<br />RATE ({netTag})</small>
+            <small className="text-center text-[8px] leading-3 tracking-wider text-muted">{combo ? 'COMBO WIN' : 'STRATEGY WIN'}<br />RATE ({combo ? 'NET' : netTag})</small>
           </div>
         </div>
         <div className="text-[11px] leading-6 text-muted">
@@ -158,7 +159,24 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
         </div>
       </div>
 
-      <canvas ref={ref} className="my-2 block h-[90px] w-full opacity-90" title="Neural activity: how the model combines features into a decision" />
+      <canvas ref={ref} className="my-2 block h-[90px] w-full" title="Neural activity: how the model combines features into a decision" />
+
+      {combo && (
+        <div className="mb-3 border px-2 py-2 text-[10px]" style={{ borderColor: 'var(--cyan)', background: 'var(--panel2)' }}>
+          <div className="mb-1 font-display tracking-wider" style={{ color: 'var(--cyan)' }}>COMBO ACCOUNT · NET</div>
+          <div className="mb-2 leading-4 text-muted">
+            BASE 0.5% / 0.25% · REDUCE AT {combo.config.combo_reduce_dd_pct}% DD · RECOVER AT {combo.config.combo_recover_dd_pct}% DD
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-2">
+            <div><small className="block text-muted">ACCOUNT PF</small><b className="font-display text-base" style={{ color: 'var(--green)' }}>{combo.profit_factor == null ? '—' : combo.profit_factor.toFixed(2)}</b></div>
+            <div><small className="block text-muted">CAGR / YEAR</small><b className="font-display text-base" style={{ color: 'var(--green)' }}>{combo.cagr_pct.toFixed(1)}%</b></div>
+            <div><small className="block text-muted">MAX CLOSED DD</small><b className="font-display text-base" style={{ color: 'var(--amber)' }}>−{combo.max_drawdown_pct.toFixed(1)}%</b></div>
+            <div><small className="block text-muted">ACCOUNT TRADES</small><b className="font-display text-base">{combo.trades.toLocaleString()}</b></div>
+          </div>
+          <div className="mt-2 text-[9px] text-muted">HISTORICAL SIMULATION · {combo.start} TO {combo.end}</div>
+          <div className="mt-1 text-[9px] leading-4 text-muted">Account results include risk sizing, news blocks and position limits. Strategy stats below measure signals in R.</div>
+        </div>
+      )}
 
       {report && all ? (
         <>
@@ -179,7 +197,7 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
               style={{ borderColor: 'rgba(0,255,136,0.5)', boxShadow: '0 0 12px rgba(0,255,136,0.15) inset' }}
               title="What the bot actually does: M15 zone, first touch, ML top 30%, value area filter, exit brain picks 1:1 or trailing. Unseen years only."
             >
-              <small className="block text-[9px] tracking-wider text-muted">BOT PF ({netTag})</small>
+              <small className="block text-[9px] tracking-wider text-muted">STRATEGY PF ({netTag})</small>
               <b className="font-display text-lg font-medium" style={{ color: 'var(--green)' }}>
                 {bot ? bot.pf.toFixed(2) : '--'}
               </b>
@@ -207,10 +225,10 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
             </div>
           )}
           {bot && (
-            <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted" title="Bot result per pair (net R, unseen years)">
+            <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted" title="Strategy-selected trades per pair in net R; account sizing is not applied here">
               {Object.entries(bot.by_symbol).map(([s, v]) => (
                 <span key={s}>
-                  {s} <b className="font-normal" style={{ color: v.pf >= 1 ? 'var(--green)' : 'var(--red)' }}>PF {v.pf.toFixed(2)}</b>
+                  {s} <b className="font-normal" style={{ color: v.pf >= 1 ? 'var(--green)' : 'var(--red)' }}>STRATEGY PF {v.pf.toFixed(2)}</b>
                 </span>
               ))}
             </div>
@@ -219,7 +237,7 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
           {report.exits?.length > 0 && (
             <>
               <div className="mb-1 text-[9px] tracking-[2px] text-muted" title="Same trades (M15 first touch, ML top 30%), different exits, unseen years">
-                EXIT BRAIN (SAME TRADES, {netTag})
+                STRATEGY EXITS (SAME TRADES, {netTag})
               </div>
               <div className="mb-2 flex flex-col gap-0.5 text-[10px]">
                 {report.exits.map((e) => {
@@ -231,9 +249,9 @@ export default function MLBrain({ report, training, onTrain, connected }: Props)
                       style={best ? { background: 'rgba(255,196,0,0.1)', border: '1px solid rgba(255,196,0,0.5)' } : { border: '1px solid transparent' }}
                       title={`${e.trades.toLocaleString()} trades, ${e.losing_years} losing years`}
                     >
-                      <span className={best ? '' : 'text-muted'} style={best ? { color: '#ffc400' } : undefined}>{e.label}</span>
+                      <span className={best ? '' : 'text-muted'} style={best ? { color: '#ffd000' } : undefined}>{e.label}</span>
                       <span>
-                        PF <b className="font-normal" style={{ color: best ? '#ffc400' : 'var(--text)' }}>{e.pf.toFixed(2)}</b>
+                        PF <b className="font-normal" style={{ color: best ? '#ffd000' : 'var(--text)' }}>{e.pf.toFixed(2)}</b>
                         <span className="text-muted"> · DD {e.max_dd_r.toFixed(0)}R</span>
                       </span>
                     </div>
