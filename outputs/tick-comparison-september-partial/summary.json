@@ -1,0 +1,240 @@
+{
+  "symbol": "EURUSD",
+  "start": "2026-09-01 00:00:00+00:00",
+  "end": "2026-09-15 00:00:00+00:00",
+  "audit": {
+    "ticks": 579992,
+    "first_tick": "2026-09-01 00:00:00.118000+00:00",
+    "last_tick": "2026-09-14 23:59:59.156000+00:00",
+    "matched_m5_bars": 2880,
+    "largest_gap_seconds": 172810.859,
+    "median_spread_pips": 0.2999999999997449,
+    "ohlc_max_abs_difference_pips": {
+      "open": 0.0,
+      "high": 0.10000000000065512,
+      "low": 0.0,
+      "close": 0.0
+    },
+    "stored_m5_bars_in_window": 2880,
+    "stored_bars_missing_tick_ohlc": 0
+  },
+  "ml_selected_before_va_activity": 15,
+  "eligible_signals": 11,
+  "scenarios": {
+    "baseline_m5": {
+      "signals": 11,
+      "closed": 11,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": 0.04411193614505704,
+      "win_pct": 36.36363636363637,
+      "pf": 1.0055319378492735
+    },
+    "counterfactual_always_trail_bar": {
+      "signals": 11,
+      "closed": 11,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -7.25231933791234,
+      "win_pct": 18.181818181818183,
+      "pf": 0.10995909230186958
+    },
+    "counterfactual_always_trail_tick": {
+      "signals": 11,
+      "closed": 11,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -7.25231933791234,
+      "win_pct": 18.181818181818183,
+      "pf": 0.10995909230186958
+    },
+    "post_entry_m5_exit": {
+      "signals": 11,
+      "closed": 11,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -4.841662739217783,
+      "win_pct": 36.36363636363637,
+      "pf": 0.39282244895303864
+    },
+    "tick_exit_bar_trail": {
+      "signals": 11,
+      "closed": 11,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -4.841662739217783,
+      "win_pct": 36.36363636363637,
+      "pf": 0.39282244895303864
+    },
+    "tick_exit_tick_trail": {
+      "signals": 11,
+      "closed": 11,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -4.841662739217783,
+      "win_pct": 36.36363636363637,
+      "pf": 0.39282244895303864
+    }
+  },
+  "timing_comparison": [
+    {
+      "signal_id": "EURUSD:63792",
+      "signal_time": "2026-09-01 08:05:00+00:00",
+      "baseline_exit": "2026-09-01 08:10:00+00:00",
+      "tick_fill": "2026-09-01 08:08:38.850000+00:00",
+      "tick_exit": "2026-09-01 08:22:14.116000+00:00",
+      "baseline_reason": "tp",
+      "tick_reason": "tp",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": 734.116
+    },
+    {
+      "signal_id": "EURUSD:63817",
+      "signal_time": "2026-09-01 15:20:00+00:00",
+      "baseline_exit": "2026-09-01 16:20:00+00:00",
+      "tick_fill": "2026-09-01 15:22:52.279000+00:00",
+      "tick_exit": "2026-09-01 16:16:34.812000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -205.188
+    },
+    {
+      "signal_id": "EURUSD:63822",
+      "signal_time": "2026-09-01 17:40:00+00:00",
+      "baseline_exit": "2026-09-01 18:10:00+00:00",
+      "tick_fill": "2026-09-01 17:43:50.846000+00:00",
+      "tick_exit": "2026-09-01 18:06:19.769000+00:00",
+      "baseline_reason": "tp",
+      "tick_reason": "tp",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -220.231
+    },
+    {
+      "signal_id": "EURUSD:63846",
+      "signal_time": "2026-09-02 08:00:00+00:00",
+      "baseline_exit": "2026-09-02 09:00:00+00:00",
+      "tick_fill": "2026-09-02 08:02:20.539000+00:00",
+      "tick_exit": "2026-09-02 08:57:27.406000+00:00",
+      "baseline_reason": "tp",
+      "tick_reason": "tp",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -152.594
+    },
+    {
+      "signal_id": "EURUSD:63881",
+      "signal_time": "2026-09-03 15:05:00+00:00",
+      "baseline_exit": "2026-09-03 16:20:00+00:00",
+      "tick_fill": "2026-09-03 15:06:05.410000+00:00",
+      "tick_exit": "2026-09-03 16:16:10.679000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -229.321
+    },
+    {
+      "signal_id": "EURUSD:63911",
+      "signal_time": "2026-09-04 12:30:00+00:00",
+      "baseline_exit": "2026-09-04 12:35:00+00:00",
+      "tick_fill": "2026-09-04 12:30:01.382000+00:00",
+      "tick_exit": "2026-09-04 12:30:01.595000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -298.405
+    },
+    {
+      "signal_id": "EURUSD:63913",
+      "signal_time": "2026-09-04 12:30:00+00:00",
+      "baseline_exit": "2026-09-04 12:40:00+00:00",
+      "tick_fill": "2026-09-04 12:30:07.560000+00:00",
+      "tick_exit": "2026-09-04 12:30:40.444000+00:00",
+      "baseline_reason": "trail",
+      "tick_reason": "trail",
+      "net_r_difference": -4.885774675362841,
+      "tick_exit_minus_baseline_seconds": -559.556
+    },
+    {
+      "signal_id": "EURUSD:64003",
+      "signal_time": "2026-09-09 11:20:00+00:00",
+      "baseline_exit": "2026-09-09 11:30:00+00:00",
+      "tick_fill": "2026-09-09 11:22:10.828000+00:00",
+      "tick_exit": "2026-09-09 11:27:39.291000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -140.709
+    },
+    {
+      "signal_id": "EURUSD:64009",
+      "signal_time": "2026-09-09 15:05:00+00:00",
+      "baseline_exit": "2026-09-09 15:20:00+00:00",
+      "tick_fill": "2026-09-09 15:07:06.984000+00:00",
+      "tick_exit": "2026-09-09 15:18:51.198000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -68.802
+    },
+    {
+      "signal_id": "EURUSD:64112",
+      "signal_time": "2026-09-14 15:35:00+00:00",
+      "baseline_exit": "2026-09-14 16:15:00+00:00",
+      "tick_fill": "2026-09-14 15:37:56.202000+00:00",
+      "tick_exit": "2026-09-14 16:12:03.691000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -176.309
+    },
+    {
+      "signal_id": "EURUSD:64113",
+      "signal_time": "2026-09-14 16:15:00+00:00",
+      "baseline_exit": "2026-09-14 16:45:00+00:00",
+      "tick_fill": "2026-09-14 16:15:46.781000+00:00",
+      "tick_exit": "2026-09-14 16:43:20.417000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -99.583
+    }
+  ],
+  "common_closed_summaries": {
+    "baseline_m5": {
+      "matched_closed_signals": 11,
+      "net_r_sum": 0.04411193614505704,
+      "win_pct": 36.36363636363637,
+      "pf": 1.0055319378492735
+    },
+    "post_entry_m5_exit": {
+      "matched_closed_signals": 11,
+      "net_r_sum": -4.841662739217783,
+      "win_pct": 36.36363636363637,
+      "pf": 0.39282244895303864
+    },
+    "tick_exit_bar_trail": {
+      "matched_closed_signals": 11,
+      "net_r_sum": -4.841662739217783,
+      "win_pct": 36.36363636363637,
+      "pf": 0.39282244895303864
+    },
+    "tick_exit_tick_trail": {
+      "matched_closed_signals": 11,
+      "net_r_sum": -4.841662739217783,
+      "win_pct": 36.36363636363637,
+      "pf": 0.39282244895303864
+    }
+  },
+  "limitations": [
+    "Exploratory one-pair sample, not account returns or an independent holdout.",
+    "Only signals whose original fill candle is in this file; excludes prior-day open positions and other pairs.",
+    "Original ML, VA and activity selection is frozen; no signal/model retraining.",
+    "post_entry_m5_exit clips the fill candle to post-fill BID extremes while retaining the original M5 spread approximation.",
+    "No news filtering applied here; historical news calendar coverage must be audited before portfolio testing.",
+    "Nominal limit/stop fills, $5/lot commission and 0.2-pip stop slippage; gaps/latency not simulated.",
+    "Every recorded tick is processed, not a 1-second latest-price poll.",
+    "Open outcomes at the data end are censored, not force-closed.",
+    "Always-trail rows are counterfactual mechanics checks, not the approved strategy.",
+    "Initial prototype covers fixed TP and trailing only; account/risk/news integration remains pending."
+  ]
+}

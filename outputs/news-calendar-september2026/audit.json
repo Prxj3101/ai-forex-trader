@@ -1,0 +1,31 @@
+{
+  "research_only": true,
+  "observation_date": "2026-10-06",
+  "source_url": "https://www.forexfactory.com/calendar?month=sep.2026",
+  "display_timezone": "Asia/Kolkata (GMT+05:30), verified on /timezone",
+  "observed_month_dates": 30,
+  "observed_all_currency_event_rows": 448,
+  "unpopulated_observed_event_rows": 0,
+  "relevant_high_impact_rows": 30,
+  "distinct_currency_event_times": 17,
+  "counts_by_currency": {
+    "USD": 16,
+    "GBP": 8,
+    "EUR": 3,
+    "JPY": 3
+  },
+  "september_frozen_selected_signals": 79,
+  "selected_signals_in_news_windows": 7,
+  "original_combo_trades_in_news_windows": 6,
+  "available_tick_signals": 11,
+  "available_tick_entries_blocked": 2,
+  "limits": [
+    "Complete for the 30 September dates as displayed by ForexFactory on observation date, not an independently exhaustive catalogue of all economic events.",
+    "Retrospective impact classification and realized event times are not a point-in-time live-calendar archive; BOJ release time was not necessarily known in advance.",
+    "Only BLS employment/PPI/CPI schedule groups independently crosschecked; remaining rows rely on ForexFactory.",
+    "Entry audit uses frozen M5 signal timestamps, not full account resimulation; account membership is the original combo ledger.",
+    "Tick entry audit uses the previously frozen partial EURUSD research output; current downloading CSV may have been overwritten.",
+    "May 2025 through August 2026 historical news gap remains; no revised full-history PF/return claimed.",
+    "Existing running bot calendar, state, models and published reports are unchanged."
+  ]
+}

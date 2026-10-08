@@ -152,6 +152,41 @@ class MT5Feed:
         bar_time = m5.index[-1]                     # aakhri = abhi khuli (forming) candle
         return m5.iloc[:-1], bar_time
 
+    def _offset_secs(self, utc_secs: float) -> int:
+        """broker server time - UTC (seconds) at a given UTC moment."""
+        if self.mode == "fixed":
+            return int(self.fixed_hours * 3600)
+        ny = pd.Timestamp(utc_secs, unit="s", tz="UTC").tz_convert(NY)
+        return int(ny.utcoffset().total_seconds()) + 7 * 3600
+
+    def ticks(self, symbol: str, from_ms: int, to_ms: int):
+        """Real MT5 ticks (bid/ask) with from_ms <= UTC time < to_ms. Returns (t_ms, ask, bid) numpy arrays
+        (may be empty) or None if MT5 gave nothing usable. Used for tick-exact fills / SL / TP / trailing."""
+        mt5 = self.mt5
+        # MT5 dates = broker server wall-clock epoch (same as the times it returns). Small pad, then exact filter.
+        pad = 120
+        a = int(from_ms // 1000) + self._offset_secs(from_ms / 1000) - pad
+        b = int(to_ms // 1000) + self._offset_secs(to_ms / 1000) + pad
+        r = mt5.copy_ticks_range(symbol, a, b, mt5.COPY_TICKS_ALL)
+        if r is not None and len(r) == 0:
+            last = mt5.symbol_info_tick(symbol)
+            if last is not None and last.time_msc >= from_ms + self._offset_secs(from_ms / 1000) * 1000:  # ticks exist, none came back
+                if not getattr(self, "_tick_warned", False):
+                    self.log("feed WARNING: copy_ticks_range gave nothing for a window that has ticks; retrying wider")
+                    self._tick_warned = True
+                r = mt5.copy_ticks_range(symbol, a - 4 * 3600, b + 4 * 3600, mt5.COPY_TICKS_ALL)
+        if r is None:
+            return None
+        if len(r) == 0:
+            return np.array([], dtype=np.int64), np.array([]), np.array([])
+        msc = np.asarray(r["time_msc"], dtype=np.int64)
+        utc = self._to_utc(msc // 1000)
+        t_ms = utc.as_unit("ns").asi8 // 1_000_000 + (msc % 1000)
+        ask, bid = np.asarray(r["ask"], float), np.asarray(r["bid"], float)
+        ok = (t_ms >= from_ms) & (t_ms < to_ms) & (ask > 0) & (bid > 0) & ~pd.isna(utc)
+        o = np.argsort(t_ms[ok], kind="stable")
+        return t_ms[ok][o], ask[ok][o], bid[ok][o]
+
     def current_bar_time(self, symbol: str) -> pd.Timestamp:
         r = self.mt5.copy_rates_from_pos(symbol, self.mt5.TIMEFRAME_M5, 0, 1)
         return self._to_utc(np.array([r[0]["time"]]))[0]
@@ -179,6 +214,11 @@ class ReplayFeed:
         for t in self.times:
             self.clock = t
             yield t
+
+    def ticks(self, symbol: str, from_ms: int, to_ms: int):
+        """Replay: real Dukascopy ticks from data/ticks/store (None if that month is not converted)."""
+        from src.backtest import tick_engine as te
+        return te.ticks(symbol, int(from_ms), int(min(to_ms, self.clock.value // 1_000_000)))
 
     def bars(self, symbol: str):
         m5 = self.data[symbol]

@@ -1,0 +1,42 @@
+{
+  "start": "2026-09-01 00:00:00+00:00",
+  "end": "2026-10-01 00:00:00+00:00",
+  "pairs": {
+    "EURUSD": {
+      "stored_market_hours": 528,
+      "csv_hours": 253,
+      "cached_hours": 253,
+      "hours_without_csv_or_cache": 275
+    },
+    "GBPUSD": {
+      "stored_market_hours": 528,
+      "csv_hours": 0,
+      "cached_hours": 0,
+      "hours_without_csv_or_cache": 528
+    },
+    "USDJPY": {
+      "stored_market_hours": 528,
+      "csv_hours": 0,
+      "cached_hours": 0,
+      "hours_without_csv_or_cache": 528
+    }
+  },
+  "csv_sources": [
+    {
+      "file": "data\\ticks\\sample\\eurusd-tick-2026-09-01-2026-09-02.csv",
+      "first": "2026-09-01 00:00:00.118000+00:00",
+      "last": "2026-09-01 23:59:59.083000+00:00"
+    },
+    {
+      "file": "data\\ticks\\monthly\\pending\\eurusd-tick-2026-09-01-2026-10-01\\eurusd-tick-2026-09-01-2026-10-01.csv",
+      "first": "2026-09-01 00:00:00.118000+00:00",
+      "last": "2026-09-15 12:59:59.981000+00:00"
+    }
+  ],
+  "limits": [
+    "Presence is not proof of complete tick coverage; final CSVs still need OHLC/gap verification.",
+    "Expected hours come from stored M5 candles; source gaps outside those candles are not detectable here.",
+    "Full account replay also needs carry-in trades/positions from before September and any later exit tails.",
+    "This inventory does not contact providers or bypass rate limits."
+  ]
+}

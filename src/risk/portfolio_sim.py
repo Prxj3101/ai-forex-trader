@@ -48,6 +48,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.research.management import POLICIES, run_trade_full  # noqa: E402
+from src.backtest import tick_engine as te  # noqa: E402
 
 DATA = ROOT / "data" / "processed"
 RESEARCH = ROOT / "data" / "research"
@@ -150,10 +151,21 @@ def load_candidates(symbols: list[str] | None = None, scores: pd.DataFrame | Non
             g1 = min(f0 + HOLD_BARS, len(m5))
             bull = r.direction == "bull"
             risk = abs(r.entry - r.sl)
-            rr, why, k = run_trade_full(EXIT_POLICY[r.exit_ml], bull, r.entry, risk,
-                                        hi[f0:g1], lo[f0:g1], cl[f0:g1], sp[f0:g1])
+            # 8 Oct 2026: asli ticks se (fill tick ke BAAD hi result); ticks na hon toh M5 (fill candle fix ke saath)
+            bar_ms = int(r.fill_time.value // 1_000_000)
+            fill = te.find_fill(sym, bull, r.entry, bar_ms, bar_ms + 300_000)
+            if fill is None:                     # ticks bolte hain limit bhara hi nahi
+                continue
+            if isinstance(fill, int):
+                x = te.run_exit(sym, bull, r.entry, r.sl, fill, r.exit_ml)
+                rr, why = x["r"], x["reason"]
+                exit_time = pd.Timestamp(x["exit_ms"], unit="ms", tz="UTC")
+            else:
+                rr, why, k = run_trade_full(EXIT_POLICY[r.exit_ml], bull, r.entry, risk,
+                                            hi[f0:g1], lo[f0:g1], cl[f0:g1], sp[f0:g1])
+                exit_time = idx[f0 + k] + pd.Timedelta(minutes=5)
             rows.append(dict(symbol=sym, direction=r.direction, fill_time=r.fill_time,
-                             exit_time=idx[f0 + k] + pd.Timedelta(minutes=5), entry=r.entry, risk=risk,
+                             exit_time=exit_time, entry=r.entry, risk=risk,
                              exit=r.exit_ml, r=rr, reason=why, score=r.score,
                              va_pos=float(getattr(r, "r24_va_pos", np.nan)),
                              act=float(getattr(r, "act_15m", np.nan))))

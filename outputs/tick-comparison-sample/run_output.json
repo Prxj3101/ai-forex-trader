@@ -1,0 +1,111 @@
+{
+  "symbol": "EURUSD",
+  "start": "2026-09-01 00:00:00+00:00",
+  "end": "2026-09-02 00:00:00+00:00",
+  "audit": {
+    "ticks": 45711,
+    "first_tick": "2026-09-01 00:00:00.118000+00:00",
+    "last_tick": "2026-09-01 23:59:59.083000+00:00",
+    "matched_m5_bars": 288,
+    "largest_gap_seconds": 126.819,
+    "median_spread_pips": 0.2999999999997449,
+    "ohlc_max_abs_difference_pips": {
+      "open": 0.0,
+      "high": 0.0,
+      "low": 0.0,
+      "close": 0.0
+    }
+  },
+  "ml_selected_before_va_activity": 3,
+  "eligible_signals": 3,
+  "scenarios": {
+    "baseline_m5": {
+      "signals": 3,
+      "closed": 3,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": 0.5378655978741854,
+      "win_pct": 66.66666666666666,
+      "pf": 1.461002938524593
+    },
+    "counterfactual_always_trail_bar": {
+      "signals": 3,
+      "closed": 3,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -1.3409804302185289,
+      "win_pct": 0.0,
+      "pf": 0.0
+    },
+    "counterfactual_always_trail_tick": {
+      "signals": 3,
+      "closed": 3,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": -1.3409804302185289,
+      "win_pct": 0.0,
+      "pf": 0.0
+    },
+    "tick_exit_bar_trail": {
+      "signals": 3,
+      "closed": 3,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": 0.5378655978741854,
+      "win_pct": 66.66666666666666,
+      "pf": 1.461002938524593
+    },
+    "tick_exit_tick_trail": {
+      "signals": 3,
+      "closed": 3,
+      "unresolved": 0,
+      "no_fill": 0,
+      "net_r_sum": 0.5378655978741854,
+      "win_pct": 66.66666666666666,
+      "pf": 1.461002938524593
+    }
+  },
+  "timing_comparison": [
+    {
+      "signal_time": "2026-09-01 08:05:00+00:00",
+      "baseline_exit": "2026-09-01 08:10:00+00:00",
+      "tick_fill": "2026-09-01 08:08:38.850000+00:00",
+      "tick_exit": "2026-09-01 08:22:14.116000+00:00",
+      "baseline_reason": "tp",
+      "tick_reason": "tp",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": 734.116
+    },
+    {
+      "signal_time": "2026-09-01 15:20:00+00:00",
+      "baseline_exit": "2026-09-01 16:20:00+00:00",
+      "tick_fill": "2026-09-01 15:22:52.279000+00:00",
+      "tick_exit": "2026-09-01 16:16:34.812000+00:00",
+      "baseline_reason": "sl",
+      "tick_reason": "sl",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -205.188
+    },
+    {
+      "signal_time": "2026-09-01 17:40:00+00:00",
+      "baseline_exit": "2026-09-01 18:10:00+00:00",
+      "tick_fill": "2026-09-01 17:43:50.846000+00:00",
+      "tick_exit": "2026-09-01 18:06:19.769000+00:00",
+      "baseline_reason": "tp",
+      "tick_reason": "tp",
+      "net_r_difference": 0.0,
+      "tick_exit_minus_baseline_seconds": -220.231
+    }
+  ],
+  "limitations": [
+    "Exploratory one-pair sample, not account returns or an independent holdout.",
+    "Only signals whose original fill candle is in this file; excludes prior-day open positions and other pairs.",
+    "Original ML, VA and activity selection is frozen; no signal/model retraining.",
+    "No news filtering applied here; historical news calendar coverage must be audited before portfolio testing.",
+    "Nominal limit/stop fills, $5/lot commission and 0.2-pip stop slippage; gaps/latency not simulated.",
+    "Every recorded tick is processed, not a 1-second latest-price poll.",
+    "Open outcomes at the data end are censored, not force-closed.",
+    "Always-trail rows are counterfactual mechanics checks, not the approved strategy.",
+    "Initial prototype covers fixed TP and trailing only; account/risk/news integration remains pending."
+  ]
+}

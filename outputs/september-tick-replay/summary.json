@@ -1,0 +1,232 @@
+{
+  "research_only": true,
+  "period": "September 2026 UTC",
+  "selected_signals": 79,
+  "common_closed_unblocked_signals": 69,
+  "common_signal_stats": {
+    "original_m5": {
+      "signals": 69,
+      "closed": 69,
+      "net_r": 12.40681575018334,
+      "pf": 1.334321615033609,
+      "win_pct": 52.17391304347826
+    },
+    "post_entry_m5": {
+      "signals": 69,
+      "closed": 69,
+      "net_r": -16.82157744932974,
+      "pf": 0.6453854660261277,
+      "win_pct": 39.130434782608695
+    },
+    "tick_exit_bar_trail": {
+      "signals": 69,
+      "closed": 69,
+      "net_r": -14.786539327951546,
+      "pf": 0.6807198201287562,
+      "win_pct": 40.57971014492754
+    },
+    "tick_exit_tick_trail": {
+      "signals": 69,
+      "closed": 69,
+      "net_r": -16.57061972756212,
+      "pf": 0.6350859633643058,
+      "win_pct": 40.57971014492754
+    },
+    "one_second_bar_trail": {
+      "signals": 69,
+      "closed": 69,
+      "net_r": -14.917269997829408,
+      "pf": 0.6778970019650504,
+      "win_pct": 40.57971014492754
+    },
+    "one_second_fast_trail": {
+      "signals": 69,
+      "closed": 69,
+      "net_r": -13.516917008658625,
+      "pf": 0.7008293839085016,
+      "win_pct": 42.028985507246375
+    }
+  },
+  "fresh_10000_account": {
+    "original_m5": {
+      "trades": 68,
+      "final_equity": 10153.21,
+      "profit_factor": 1.1,
+      "win_pct": 54.4,
+      "max_drawdown_pct": 5.3,
+      "worst_day_pct": -1.58,
+      "commission_usd": 302.35,
+      "skipped": {
+        "already in this pair": 4
+      },
+      "risk_used": {
+        "avg_pct": 0.445,
+        "max_pct": 0.716,
+        "boosted_trades_pct": 79.4
+      },
+      "combo": {
+        "aggressive_trades": 35,
+        "conservative_trades": 33
+      },
+      "kill_switch_events": [],
+      "profit_usd": 153.21,
+      "return_pct": 1.5320887904335259,
+      "news_blocked_signals": 7,
+      "no_fill_signals": 0,
+      "censored_signals": 0
+    },
+    "post_entry_m5": {
+      "trades": 67,
+      "final_equity": 9547.3,
+      "profit_factor": 0.63,
+      "win_pct": 40.3,
+      "max_drawdown_pct": 5.8,
+      "worst_day_pct": -0.94,
+      "commission_usd": 190.75,
+      "skipped": {
+        "already in this pair": 4
+      },
+      "risk_used": {
+        "avg_pct": 0.292,
+        "max_pct": 0.559,
+        "boosted_trades_pct": 16.4
+      },
+      "combo": {
+        "aggressive_trades": 23,
+        "conservative_trades": 44
+      },
+      "kill_switch_events": [],
+      "profit_usd": -452.7,
+      "return_pct": -4.527038676589799,
+      "news_blocked_signals": 7,
+      "no_fill_signals": 1,
+      "censored_signals": 0
+    },
+    "tick_exit_bar_trail": {
+      "trades": 70,
+      "final_equity": 9578.57,
+      "profit_factor": 0.67,
+      "win_pct": 41.4,
+      "max_drawdown_pct": 5.5,
+      "worst_day_pct": -0.94,
+      "commission_usd": 199.3,
+      "skipped": {
+        "already in this pair": 1
+      },
+      "risk_used": {
+        "avg_pct": 0.292,
+        "max_pct": 0.559,
+        "boosted_trades_pct": 15.7
+      },
+      "combo": {
+        "aggressive_trades": 23,
+        "conservative_trades": 47
+      },
+      "kill_switch_events": [],
+      "profit_usd": -421.43,
+      "return_pct": -4.2143414751655115,
+      "news_blocked_signals": 7,
+      "no_fill_signals": 1,
+      "censored_signals": 0
+    },
+    "tick_exit_tick_trail": {
+      "trades": 70,
+      "final_equity": 9556.29,
+      "profit_factor": 0.67,
+      "win_pct": 41.4,
+      "max_drawdown_pct": 5.8,
+      "worst_day_pct": -1.17,
+      "commission_usd": 218.4,
+      "skipped": {
+        "already in this pair": 1
+      },
+      "risk_used": {
+        "avg_pct": 0.315,
+        "max_pct": 0.559,
+        "boosted_trades_pct": 15.7
+      },
+      "combo": {
+        "aggressive_trades": 30,
+        "conservative_trades": 40
+      },
+      "kill_switch_events": [],
+      "profit_usd": -443.71,
+      "return_pct": -4.43711194312215,
+      "news_blocked_signals": 7,
+      "no_fill_signals": 1,
+      "censored_signals": 0
+    },
+    "one_second_bar_trail": {
+      "trades": 68,
+      "final_equity": 9557.09,
+      "profit_factor": 0.66,
+      "win_pct": 41.2,
+      "max_drawdown_pct": 5.7,
+      "worst_day_pct": -1.22,
+      "commission_usd": 199.35,
+      "skipped": {
+        "already in this pair": 1
+      },
+      "risk_used": {
+        "avg_pct": 0.302,
+        "max_pct": 0.559,
+        "boosted_trades_pct": 16.2
+      },
+      "combo": {
+        "aggressive_trades": 23,
+        "conservative_trades": 45
+      },
+      "kill_switch_events": [],
+      "profit_usd": -442.91,
+      "return_pct": -4.429060460418769,
+      "news_blocked_signals": 7,
+      "no_fill_signals": 3,
+      "censored_signals": 0
+    },
+    "one_second_fast_trail": {
+      "trades": 68,
+      "final_equity": 9560.99,
+      "profit_factor": 0.69,
+      "win_pct": 42.6,
+      "max_drawdown_pct": 5.7,
+      "worst_day_pct": -1.19,
+      "commission_usd": 229.9,
+      "skipped": {
+        "already in this pair": 1
+      },
+      "risk_used": {
+        "avg_pct": 0.339,
+        "max_pct": 0.559,
+        "boosted_trades_pct": 17.6
+      },
+      "combo": {
+        "aggressive_trades": 32,
+        "conservative_trades": 36
+      },
+      "kill_switch_events": [],
+      "profit_usd": -439.01,
+      "return_pct": -4.390106159772761,
+      "news_blocked_signals": 7,
+      "no_fill_signals": 3,
+      "censored_signals": 0
+    }
+  },
+  "change_counts": {
+    "post_entry_m5": 14,
+    "tick_exit_bar_trail": 17,
+    "tick_exit_tick_trail": 18,
+    "one_second_bar_trail": 14,
+    "one_second_fast_trail": 15
+  },
+  "limits": [
+    "Frozen 79 selected entries/ML exit choices/VA/activity; intrabar zones and score updates are not tested.",
+    "All account variants start September with a fresh $10,000, aggressive combo, no prior-month drawdown or positions; not a continuation of the 2019 account.",
+    "Original selected ledger has no September carry-in positions; censored outcomes excluded rather than force-closed.",
+    "tick_* processes every recorded quote (ideal); one_second_* observes only the latest available quote at whole UTC seconds. Actual poll phase, outages and broker latency are not modeled.",
+    "Nominal limit/stop fills, $5 per lot roundtrip, 0.2-pip stop slippage; gap/latency/fill-quality stress still pending.",
+    "M5 short exits retain stored spread approximation; tick short exits use actual Ask. That quote-model change is included in the comparison.",
+    "News uses separate retrospective September provider calendar with -5/+20 entry block, not historical live-calendar snapshots.",
+    "Drawdown is CLOSED balance only, not intratrade floating equity drawdown; no annualized-return claim from one month.",
+    "Research is exploratory, not independent holdout evidence or approval to deploy. Production bot, models, live state and reports unchanged."
+  ]
+}

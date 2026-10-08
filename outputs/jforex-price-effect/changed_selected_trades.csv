@@ -1,0 +1,1 @@
+trade_id,symbol,fill_time,carry_in,chosen_policy,tested_policy,is_selected_policy,original_combo_taken,research_news_block,old_gross_r,new_gross_r,r_difference,old_reason,new_reason,old_exit_bar,new_exit_bar,result_or_exit_changed,entry_touch_changed,different_bars_encountered_before_exit,end_censored

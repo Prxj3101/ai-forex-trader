@@ -47,6 +47,7 @@ from src.live import control  # noqa: E402
 from src.live.brain import Brain  # noqa: E402
 from src.live.live_features import HISTORY_DAYS, candidates  # noqa: E402
 from src.research.management import POLICIES, run_trade_full  # noqa: E402
+from src.backtest import tick_engine as te  # noqa: E402
 from src.risk.portfolio_sim import (LOT, PIP, daily_ok, risk_usd_per_unit,  # noqa: E402
                                     trade_risk_pct, trading_day, usd_side, RiskMode, combo_config)
 
@@ -232,7 +233,7 @@ class ShadowEngine:
         self.parked[symbol] = []                 # pichli candle ke avoided orders ab bekaar
         self._resolve_armed(symbol, m5, bar_time)
         self._resolve_whatif(symbol, m5, bar_time)
-        self._update_open(symbol, m5)
+        self.manage_ticks(symbol, int(bar_time.value // 1_000_000), m5)   # SL / TP / trail on real ticks
         self._update_whatif(symbol, m5)
         self._decide(symbol, m5, bar_time)
         if self.write_view:
@@ -278,10 +279,20 @@ class ShadowEngine:
             b = m5.loc[o["bar_time"]]
             filled = (b["low"] + b["spread"] <= o["entry"]) if o["bull"] else (b["high"] >= o["entry"])
             if filled:
-                self._fill(symbol, o, "candle")
+                # candle bolti hai bhara: asli ticks mein pehla touch dhoondo (fill se pehle ka move kabhi nahi ginna)
+                b0 = int(o["bar_time"].value // 1_000_000)
+                tk = self.feed.ticks(symbol, b0, b0 + 300_000) if hasattr(self.feed, "ticks") else None
+                if tk is not None and len(tk[0]):
+                    hit = np.nonzero(tk[1] <= o["entry"])[0] if o["bull"] else np.nonzero(tk[2] >= o["entry"])[0]
+                    if not len(hit):
+                        self._log_decision(symbol, o, "FILL-SKIPPED", "ticks never reached the entry (candle spread estimate)")
+                        continue
+                    self._fill(symbol, o, "candle", fill_ms=int(tk[0][hit[0]]))
+                else:                                     # ticks nahi mile: candle ke END se manage (conservative)
+                    self._fill(symbol, o, "candle", fill_ms=b0 + 300_000)
         self.armed[symbol] = keep
 
-    def _fill(self, symbol, o, how: str) -> bool:
+    def _fill(self, symbol, o, how: str, fill_ms: int | None = None) -> bool:
         """Armed limit order fill: risk limits dobara check -> khula shadow trade. how = 'tick' (live, turant) / 'candle'."""
         self.risk_mode.select(self.cfg, self.equity, self.peak)
         dd = (self.peak - self.equity) / self.peak * 100 if self.peak > 0 else 0
@@ -316,7 +327,11 @@ class ShadowEngine:
         # fill_time = candle ka time (exit logic backtest jaisa usi candle se); filled_at = asli ghadi ka time
         t = dict(o, status="open", fill_time=o["bar_time"], r_now=0.0,
                  filled_at=(now if how == "tick" else o["bar_time"] + pd.Timedelta(minutes=5)).isoformat(timespec="seconds"))
-        t.update(_live_levels(t, [], [], []))                 # chart: TP + SL turant (candle band hone se pehle)
+        if fill_ms is None:
+            fill_ms = int(now.value // 1_000_000)
+        te.init_state(t, fill_ms)                           # tick-by-tick SL / TP / trail state (src/backtest/tick_engine.py)
+        t["filled_at"] = pd.Timestamp(fill_ms, unit="ms", tz="UTC").isoformat(timespec="seconds")
+        t.update(te.levels(t))                              # chart: TP + SL turant
         self.open.append(t)
         self._remember_traded_zone(t)
         self.filled_now.add((symbol, str(o["zone"]), o["bar_time"]))
@@ -339,7 +354,7 @@ class ShadowEngine:
                 if not hit:
                     keep.append(o)
                     continue
-                ok = self._fill(symbol, o, "tick")   # fill ya FILL-SKIPPED - dono mein order armed se hat jaata hai
+                ok = self._fill(symbol, o, "tick", fill_ms=p.get("time_ms"))   # fill ya FILL-SKIPPED - order armed se hat jaata hai
                 self._mark_watch(symbol, o, "filled" if ok else "fill_skipped")
                 changed = True
             self.armed[symbol] = keep
@@ -358,7 +373,40 @@ class ShadowEngine:
             self.log(f"view: watchlist update mein dikkat ({e.__class__.__name__}: {e})")
         self._write_watchlist()
 
-    # 2) open shadow trades: same exit logic as the backtest
+    # 2) open shadow trades: SL / TP / trailing on REAL TICKS (same rules as the tick backtest)
+    def manage_ticks(self, symbol=None, upto_ms: int | None = None, m5=None) -> bool:
+        """Every ~1 s (live) and every candle (replay): feed new ticks to each open trade. True = something closed.
+        No ticks available -> old M5 method (with the fill-candle fix) for that pair."""
+        upto_ms = int(pd.Timestamp.now(tz="UTC").value // 1_000_000) if upto_ms is None else int(upto_ms)
+        still, closed, m5_needed = [], False, set()
+        for t in self.open:
+            if symbol is not None and t["symbol"] != symbol:
+                still.append(t)
+                continue
+            if "entry_ms" not in t:                     # trade from an older state file: manage from fill candle end
+                te.init_state(t, int(pd.Timestamp(t["fill_time"]).value // 1_000_000) + 300_000)
+            tk = self.feed.ticks(t["symbol"], t["last_ms"] + 1, upto_ms) if hasattr(self.feed, "ticks") else None
+            if tk is None:
+                m5_needed.add(t["symbol"])
+                still.append(t)
+                continue
+            res = te.feed_ticks(t, *tk)
+            if res is None and upto_ms >= t["entry_ms"] + te.HOLD_MS:
+                res = (t["r_now"], "timeout", t["last_ms"])
+            if res is None:
+                t.update(te.levels(t))
+                still.append(t)
+                continue
+            r, why, ms = res
+            self._book_close(t, r, why, pd.Timestamp(ms, unit="ms", tz="UTC"))
+            closed = True
+        self.open = still
+        for s_ in m5_needed:
+            if m5 is not None and (symbol is None or s_ == symbol):
+                self._update_open(s_, m5)
+        return closed
+
+    # fallback: M5 candles (only when ticks are not available)
     def _update_open(self, symbol, m5):
         hi, lo, cl, sp = (m5[c].to_numpy() for c in ["high", "low", "close", "spread"])
         idx = m5.index
@@ -736,6 +784,8 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
                 eng.save()
             if prices and eng.fill_intrabar(prices):                   # limit chhua -> trade turant khula
                 eng.save()                                             # dashboard ko seconds mein dikhe
+            if eng.open and eng.manage_ticks():                        # SL / TP / trail har tick pe -> close turant
+                eng.save()
             if time.time() - last_health >= health_every_s:
                 monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / VPS sehat (har ~5 s)
                 last_health = time.time()

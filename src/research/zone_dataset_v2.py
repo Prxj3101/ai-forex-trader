@@ -295,6 +295,9 @@ def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame, entry_mode: str = "body"
             else:
                 fav = (entry - (lo[f:dead_at] + sp[f:dead_at])) / risk
                 adv = (entry - (hi[f:dead_at] + sp[f:dead_at])) / risk
+            if len(fav):                           # fill candle: fill se pehle ka high/low nahi (8 Oct fix)
+                fav = fav.copy()
+                fav[0] = ((cl[f] - entry) if bull else (entry - (cl[f] + sp[f]))) / risk
             reach = np.nonzero(fav >= 1.0)[0]
             stop = np.nonzero(adv <= -1.0)[0]
             if reach.size == 0 or (stop.size and stop[0] <= reach[0]):
@@ -317,8 +320,11 @@ def zones_for(tf_df, h1, h4, h1_zones, d1, bias_h4, bias_d1, swing_n, min_disp, 
 
 
 def build(symbol: str, swing_n: int | None = None, min_disp: float | None = None, log=None,
-          entry_mode: str = "body") -> pd.DataFrame:
-    """swing_n / min_disp na do toh src/config.py se (har pair ka apna displacement)."""
+          entry_mode: str = "body", tick_labels: bool = True) -> pd.DataFrame:
+    """swing_n / min_disp na do toh src/config.py se (har pair ka apna displacement).
+    tick_labels=True (8 Oct 2026): labels (r_tp1 / r_tp2 / r_trail) ASLI TICKS se (src/backtest/tick_engine.py),
+    jahan data/ticks/store mein ticks hain; baaki jagah M5 (fill candle fix ke saath). Rows jahan ticks bolte hain
+    limit bhara hi nahi -> hata di jaati hain."""
     swing_n = config.SWING_N if swing_n is None else swing_n
     min_disp = config.disp_for(symbol) if min_disp is None else min_disp
     say = log or (lambda agent, msg, pct=None: print(f"[{agent}] {msg}"))
@@ -348,6 +354,10 @@ def build(symbol: str, swing_n: int | None = None, min_disp: float | None = None
     ds = add_vp_features(ds, symbol, m5)
     # Market activity at the touch (activity filter; src/features/activity.py)
     ds = add_activity(ds, symbol, m5)
+    if tick_labels:                                   # labels from real ticks where available (8 Oct 2026)
+        from src.research.tick_labels import relabel
+        say("zone", f"{symbol}: replaying every trade on real ticks (labels)...", None)
+        ds = relabel(ds, symbol)
     say("zone", f"{symbol}: dataset v2 ready, {len(ds):,} trades in {time.time() - t0:.0f}s", 100)
     return ds
 
@@ -395,11 +405,13 @@ def main() -> None:
     p.add_argument("--disp", type=float, default=None, help="default: har pair ka apna (src/config.py DISP_BY_SYMBOL)")
     p.add_argument("--entry", choices=["body", "body_spread"], default="body",
                    help="body = limit at zone body edge; body_spread = BUY limit raised by the spread")
+    p.add_argument("--m5-labels", action="store_true",
+                   help="skip the tick replay (fast; then run src/research/tick_labels.py per year + merge)")
     a = p.parse_args()
 
     pd.set_option("display.width", 200)
     for sym in a.symbol:
-        ds = build(sym, a.swing, a.disp, entry_mode=a.entry)
+        ds = build(sym, a.swing, a.disp, entry_mode=a.entry, tick_labels=not a.m5_labels)
         print(f"saved -> {save(ds, sym)}\n")
         for name, t in summary(ds).items():
             print(f"== {sym}: {name} ==")

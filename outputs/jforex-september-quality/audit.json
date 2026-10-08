@@ -1,0 +1,93 @@
+{
+  "period": "September 2026 UTC",
+  "research_only": true,
+  "export_clock_interpretation": "UTC+3 for September; compared against stored UTC M5 OHLC",
+  "pairs": {
+    "EURUSD": {
+      "file": "data\\ticks\\jforex\\EURUSD_Ticks_2026.09.01_2026.10.01.csv",
+      "sha256": "190d90449a6a30fc9f04b578e15d65d7002f26fff7039aa81858f3356373bd91",
+      "ticks": 1387649,
+      "first_utc": "2026-09-01 00:00:00.118000+00:00",
+      "last_utc": "2026-09-30 23:59:51.355000+00:00",
+      "milliseconds_preserved": true,
+      "chronological": true,
+      "invalid_bid_ask_rows": 0,
+      "outside_requested_UTC_month": 0,
+      "expected_m5_bars": 6336,
+      "missing_expected_m5_bars": 0,
+      "extra_tick_m5_bars": 0,
+      "bars_with_any_ohlc_difference": 11,
+      "max_ohlc_difference_pips": {
+        "open": 0.0,
+        "high": 0.40000000000040004,
+        "low": 0.0,
+        "close": 0.2999999999997449
+      },
+      "duplicate_exports": [
+        {
+          "file": "EURUSD_Ticks_2026.09.01_2026.10.01_(1).csv",
+          "identical_to_original": true
+        },
+        {
+          "file": "EURUSD_Ticks_2026.09.01_2026.10.01_(2).csv",
+          "identical_to_original": true
+        }
+      ]
+    },
+    "GBPUSD": {
+      "file": "data\\ticks\\jforex\\GBPUSD_Ticks_2026.09.01_2026.10.01.csv",
+      "sha256": "223045af8a5e5d45ae89404262f358337ab547e28c0d153b7c2269312a3dfe0b",
+      "ticks": 1943266,
+      "first_utc": "2026-09-01 00:00:00.124000+00:00",
+      "last_utc": "2026-09-30 23:59:55.542000+00:00",
+      "milliseconds_preserved": true,
+      "chronological": true,
+      "invalid_bid_ask_rows": 0,
+      "outside_requested_UTC_month": 0,
+      "expected_m5_bars": 6336,
+      "missing_expected_m5_bars": 0,
+      "extra_tick_m5_bars": 0,
+      "bars_with_any_ohlc_difference": 8,
+      "max_ohlc_difference_pips": {
+        "open": 0.0,
+        "high": 0.0,
+        "low": 0.0,
+        "close": 0.5999999999994898
+      },
+      "duplicate_exports": [
+        {
+          "file": "GBPUSD_Ticks_2026.09.01_2026.10.01_(1).csv",
+          "identical_to_original": true
+        }
+      ]
+    },
+    "USDJPY": {
+      "file": "data\\ticks\\jforex\\USDJPY_Ticks_2026.09.01_2026.10.01.csv",
+      "sha256": "aa685de908f2db021f0052ecc5fad60090f7bc39689d8040507a8dc352984bc1",
+      "ticks": 3475957,
+      "first_utc": "2026-09-01 00:00:00.105000+00:00",
+      "last_utc": "2026-09-30 23:59:58.997000+00:00",
+      "milliseconds_preserved": true,
+      "chronological": true,
+      "invalid_bid_ask_rows": 0,
+      "outside_requested_UTC_month": 0,
+      "expected_m5_bars": 6333,
+      "missing_expected_m5_bars": 0,
+      "extra_tick_m5_bars": 0,
+      "bars_with_any_ohlc_difference": 14,
+      "max_ohlc_difference_pips": {
+        "open": 0.0,
+        "high": 0.0,
+        "low": 0.0,
+        "close": 1.2000000000000455
+      },
+      "duplicate_exports": []
+    }
+  },
+  "limits": [
+    "Expected-bar presence does not prove every tick is present or exclude within-bar gaps.",
+    "Nonzero OHLC differences mean JForex and stored M5 sources are not identical.",
+    "No changes to bot, strategy, live state or published performance reports.",
+    "A full account replay still requires carry-in positions and exit tails outside September."
+  ]
+}

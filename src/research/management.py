@@ -70,8 +70,14 @@ def run_trade(p: Policy, bull: bool, entry: float, risk: float,
 
 
 def run_trade_full(p: Policy, bull: bool, entry: float, risk: float,
-                   hi: np.ndarray, lo: np.ndarray, cl: np.ndarray, sp: np.ndarray) -> tuple[float, str, int]:
-    """run_trade jaisa hi, lekin exit wali candle ka number bhi deta hai (portfolio simulator ke liye)."""
+                   hi: np.ndarray, lo: np.ndarray, cl: np.ndarray, sp: np.ndarray,
+                   fill_bar_partial: bool = True) -> tuple[float, str, int]:
+    """run_trade jaisa hi, lekin exit wali candle ka number bhi deta hai (portfolio simulator ke liye).
+
+    FILL-CANDLE FIX (8 Oct 2026): pehli candle (fill wali) mein limit beech mein kahin bhara. Uske pehle ka
+    high/low profit nahi gin sakte (purani galti). fill_bar_partial=True: fill candle mein SL check hota hai
+    (fill ke baad hi price wahan pahuncha), lekin TP / trailing best sirf candle ke CLOSE se (jo pakka fill ke
+    baad hai). Asli ticks mile toh src/backtest/tick_engine.py use karo - wo exact hai; ye M5 fallback hai."""
     sl_r = -1.0            # SL entry se kitne R pe (shuru mein -1R)
     open_frac = 1.0        # position ka kitna hissa abhi khula hai
     realized = 0.0         # band kiye hisse ka R
@@ -85,6 +91,8 @@ def run_trade_full(p: Policy, bull: bool, entry: float, risk: float,
         else:
             fav = (entry - (lo[i] + sp[i])) / risk     # short ASK pe band hota hai
             adv = (entry - (hi[i] + sp[i])) / risk
+        if i == 0 and fill_bar_partial:                # fill candle: fill se pehle ka move nahi ginna
+            fav = ((cl[0] - entry) if bull else (entry - (cl[0] + sp[0]))) / risk
 
         # 1) STOP pehle (conservative)
         if adv <= sl_r:

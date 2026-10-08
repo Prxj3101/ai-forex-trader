@@ -1,0 +1,28 @@
+{
+  "research_only": true,
+  "price_only_comparison": true,
+  "legacy_selected_results_reconcile": true,
+  "selected_trades_checked": 79,
+  "september_entries": 79,
+  "carry_in_trades": 0,
+  "different_bars_by_pair": {
+    "EURUSD": 11,
+    "GBPUSD": 8,
+    "USDJPY": 14
+  },
+  "selected_outcomes_or_exit_times_changed": 0,
+  "selected_entry_touch_checks_changed": 0,
+  "selected_positions_encountering_different_bars": 1,
+  "selected_outcomes_censored_at_data_end": 0,
+  "diagnostic_both_exit_policies_changed": 0,
+  "selected_gross_r_difference": 0.0,
+  "changed_selected_trades": [],
+  "limits": [
+    "Frozen entries, zones, ML scores and selected exit policies; signal generation/retraining is not tested.",
+    "Only BID OHLC discrepancies are changed; spread/cost/risk settings and M5 timing stay fixed.",
+    "This does not test seconds-based execution, pre-entry contamination correction, slippage or bid/ask model differences.",
+    "Counterfactual tp1/trail1 checks are diagnostics, not a recommended exit strategy.",
+    "End-censored positions cannot establish their final outcome; no revised full account return claimed.",
+    "Original account membership and research news flags are annotations, not a new portfolio simulation."
+  ]
+}

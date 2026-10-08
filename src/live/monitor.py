@@ -141,7 +141,9 @@ def _prices_forming(feed, eng, now: pd.Timestamp):
         pip = PIP.get(s, 0.0001)
         prices[s] = {"bid": float(t.bid), "ask": float(t.ask),
                      "spread_pips": round((t.ask - t.bid) / pip, 2),
-                     "tick_age_sec": round(age) if age is not None else None}
+                     "tick_age_sec": round(age) if age is not None else None,
+                     "time_ms": (int(feed._to_utc(np.array([t.time_msc // 1000]))[0].value // 1_000_000)
+                                 + int(t.time_msc % 1000)) if pd.notna(tick_utc) else None}
     # abhi chal rahi (forming) M5 candle -> dashboard chart TradingView jaisa hilta rahe
     for s in eng.symbols:
         try:
