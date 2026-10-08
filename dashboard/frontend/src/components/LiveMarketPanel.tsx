@@ -46,6 +46,7 @@ const STATUS: Record<string, { text: string; color: string; tip: string }> = {
   daily_limit: { text: 'DAILY RULE', color: 'var(--amber)', tip: 'Daily stop or daily risk budget reached' },
   kill_switch: { text: 'KILL SWITCH', color: 'var(--red)', tip: 'Kill switch is active' },
   lot_small: { text: 'LOT SMALL', color: 'var(--muted)', tip: 'Lot size below 0.01' },
+  traded: { text: 'TRADED', color: 'var(--muted)', tip: 'This zone was already traded (one trade per zone)' },
 }
 
 function toZone(z: LiveWatchZone): Zone | null {

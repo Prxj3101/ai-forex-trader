@@ -68,7 +68,8 @@ def _category(reason: str | None) -> str:
         return "taken"
     r = reason.lower()
     for key, lab in (("avoided manually", "avoided"), ("ml score", "ml_low"), ("value area", "value_area"), ("market quiet", "quiet"),
-                     ("news", "news"), ("kill", "kill_switch"), ("daily", "daily_limit"), ("lot below", "lot_small")):
+                     ("news", "news"), ("kill", "kill_switch"), ("daily", "daily_limit"), ("lot below", "lot_small"),
+                     ("already traded", "traded")):
         if key in r:
             return lab
     return "limits"            # max open / already in pair / USD one way
@@ -182,6 +183,8 @@ class ShadowEngine:
         self.open: list[dict] = []          # khule shadow trades
         self.closed: list[dict] = []
         self.armed: dict = {}               # symbol -> list of orders armed for the CURRENT candle
+        self._last_bars: dict = {}          # symbol -> (closed M5 bars, current candle time) of the last step
+        self._redecide: set = set()         # symbols to decide again after a mid-candle close
         self.last_decision: dict = {}       # zone key -> last decision text (sirf badlav log karte hain)
         self.kill = False
         self.wi_armed: dict = {}            # what-if: symbol -> every candidate of the CURRENT candle (taken or not)
@@ -230,14 +233,36 @@ class ShadowEngine:
     # ------------------------------------------------------------------
     def step(self, symbol: str):
         m5, bar_time = self.feed.bars(symbol)
+        self._last_bars[symbol] = (m5, bar_time)
         self.parked[symbol] = []                 # pichli candle ke avoided orders ab bekaar
         self._resolve_armed(symbol, m5, bar_time)
         self._resolve_whatif(symbol, m5, bar_time)
         self.manage_ticks(symbol, int(bar_time.value // 1_000_000), m5)   # SL / TP / trail on real ticks
         self._update_whatif(symbol, m5)
         self._decide(symbol, m5, bar_time)
+        self._redecide.discard(symbol)
         if self.write_view:
             self._write_view(symbol, m5, bar_time)
+
+    def redecide_pending(self) -> bool:
+        """A trade closed mid-candle (tick SL/TP, manual close): limits like 'already in this pair' / max open /
+        daily budget changed NOW -> decide again for the current candle (backtest also allows a new fill right
+        after an exit). Refreshes the dashboard watchlist at once instead of after the next candle."""
+        done = False
+        for sym in list(self._redecide):
+            if sym not in self._last_bars:
+                continue
+            m5, bt = self._last_bars[sym]
+            self.armed[sym] = [o for o in self.armed.get(sym, []) if o["bar_time"] != bt]
+            try:
+                self._decide(sym, m5, bt)
+                done = True
+            except Exception as e:  # noqa: BLE001 - never stop the bot for this
+                self.log(f"redecide {sym}: {e.__class__.__name__}: {e}")
+            self._redecide.discard(sym)
+        if done and self.write_view:
+            self._write_watchlist()
+        return done
 
     def _remember_traded_zone(self, t: dict):
         """Trade hua -> us zone ka box yaad rakho (watchlist se hat jaata hai, chart pe nahi hatna chahiye)."""
@@ -442,6 +467,7 @@ class ShadowEngine:
         self.peak = max(self.peak, self.equity)
         self.day_pnl[day] = self.day_pnl.get(day, 0.0) + pnl
         self.closed.append(t)
+        self._redecide.update(self.symbols)          # limits changed -> watchlist / orders re-checked right away
         row = pd.DataFrame([_to_json(t)]).reindex(columns=CLOSED_COLS)      # fixed column order
         row.to_csv(self.closed_file, mode="a", header=not self.closed_file.exists(), index=False)
         self.log(f"  CLOSED {symbol} {t['direction']} {why} R {r:+.2f} pnl ${pnl:+.2f} | equity ${self.equity:,.2f}")
@@ -596,6 +622,9 @@ class ShadowEngine:
                        o["risk_usd"] + self.cfg.commission_per_lot * o["lots"])
         if why:
             return why
+        zk = (symbol, str(o["zone"]), o["direction"])          # same zone already traded (e.g. filled + closed this candle)
+        if any((t["symbol"], str(t["zone"]), t["direction"]) == zk for t in self.open + self.closed[-50:]):
+            return "zone already traded"
         busy = self.open                        # backtest jaisa: sirf KHULE trades gine jaate hain
         if len(busy) >= self.cfg.max_open:
             return "max open trades"
@@ -785,6 +814,8 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
             if prices and eng.fill_intrabar(prices):                   # limit chhua -> trade turant khula
                 eng.save()                                             # dashboard ko seconds mein dikhe
             if eng.open and eng.manage_ticks():                        # SL / TP / trail har tick pe -> close turant
+                eng.save()
+            if eng._redecide and eng.redecide_pending():               # trade band -> watchlist / orders turant update
                 eng.save()
             if time.time() - last_health >= health_every_s:
                 monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / VPS sehat (har ~5 s)
