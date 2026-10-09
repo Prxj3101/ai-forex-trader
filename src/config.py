@@ -7,6 +7,8 @@ Kyun: pehle har file mein "swing 1, displacement 2.0" alag-alag likha tha. Ab se
 Sweep ke results (swing 1, cost-aware ML, bot PF net of $5 commission):
     EURUSD best 1.5 (1.21),  USDJPY best 1.5 (1.28),  GBPUSD best 2.5 (1.26)
     Mixed account sim ($10k, 0.25% risk): ~45%/yr, max drawdown ~6.6%
+  !! PURANE NUMBERS - fill-candle lookahead wale (M5 bars). Tick-exact (8-9 Oct 2026) ke baad
+     sach: bot PF ~0.87-0.89, account sim ~-2%/yr. Edge abhi NAHI hai - details CLAUDE.md mein.
 GBPUSD ka spread zyada hai, isliye usko sirf strong (2.5x) zones chahiye.
 """
 

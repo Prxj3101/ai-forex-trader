@@ -20,6 +20,7 @@ export type Zone = {
   bottom: number
   body_top: number
   body_bottom: number
+  entry?: number | null          // bot's limit price (wick edge since 9 Oct 2026); missing -> wick edge
   disp_atr: number
   has_fvg: boolean
   first_touch_time: number | null
@@ -466,6 +467,7 @@ export type LiveChart = {
     bottom: number | null
     body_top: number | null
     body_bottom: number | null
+    entry?: number | null
     created_at: number | null
     zone_candle_time: number | null
     disp_atr: number | null

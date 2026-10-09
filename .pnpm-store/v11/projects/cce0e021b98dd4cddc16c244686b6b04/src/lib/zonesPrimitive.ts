@@ -17,7 +17,7 @@ import type { Zone } from './api'
 */
 
 type Target = Parameters<IPrimitivePaneRenderer['draw']>[0]
-type Box = { x1: number; x2: number; yTop: number; yBot: number; yBody: number; color: string; label: string; dead: boolean }
+type Box = { x1: number; x2: number; yTop: number; yBot: number; yBody: number; yEntry: number; color: string; label: string; dead: boolean }
 
 /** Zone ke text labels: sab, sirf zinda (invalid nahi hue) zones ke, ya koi nahi. Chart saaf rakhne ke liye. */
 export type LabelMode = 'all' | 'live' | 'none'
@@ -44,12 +44,24 @@ class ZonesRenderer implements IPrimitivePaneRenderer {
         ctx.lineWidth = 1 * hr
         ctx.strokeRect(x, y, w, h)
         ctx.shadowBlur = 0
-        ctx.setLineDash([4 * hr, 4 * hr])
+        // candle body edge: faint dotted line (reference only)
+        ctx.globalAlpha = (b.dead ? 0.55 : 1) * 0.35
+        ctx.setLineDash([2 * hr, 4 * hr])
         ctx.beginPath()
         ctx.moveTo(x, b.yBody * vr)
         ctx.lineTo(x + w, b.yBody * vr)
         ctx.stroke()
         ctx.setLineDash([])
+        // ENTRY line = where the bot's limit order sits (zone wick edge)
+        ctx.globalAlpha = b.dead ? 0.55 : 1
+        ctx.strokeStyle = '#00e5ff'
+        ctx.lineWidth = 2 * hr
+        ctx.beginPath()
+        ctx.moveTo(x, b.yEntry * vr)
+        ctx.lineTo(x + w, b.yEntry * vr)
+        ctx.stroke()
+        ctx.strokeStyle = b.color
+        ctx.lineWidth = 1 * hr
         if (b.label) {
           ctx.globalAlpha = 1
           ctx.fillStyle = b.color
@@ -141,12 +153,13 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
       const yTop = series.priceToCoordinate(z.top)
       const yBot = series.priceToCoordinate(z.bottom)
       const yBody = series.priceToCoordinate(z.direction === 'bull' ? z.body_top : z.body_bottom)
-      if (x1 === null || x2 === null || yTop === null || yBot === null || yBody === null) continue
+      const yEntry = series.priceToCoordinate(z.entry ?? (z.direction === 'bull' ? z.top : z.bottom))
+      if (x1 === null || x2 === null || yTop === null || yBot === null || yBody === null || yEntry === null) continue
       const bull = z.direction === 'bull'
       const dead = z.invalidated_time !== null
       const showLabel = this.labelMode === 'all' || (this.labelMode === 'live' && !dead)
       boxes.push({
-        x1, x2, yTop, yBot, yBody,
+        x1, x2, yTop, yBot, yBody, yEntry,
         color: bull ? '#00ff9c' : '#ff426e',
         label: showLabel ? `${bull ? 'DEMAND' : 'SUPPLY'} ${z.bottom}-${z.top} · ${z.disp_atr}x ATR${z.has_fvg ? ' · FVG' : ''}` : '',
         dead,

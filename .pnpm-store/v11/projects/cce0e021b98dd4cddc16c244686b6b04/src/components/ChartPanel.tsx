@@ -305,7 +305,7 @@ export default function ChartPanel({ symbols, settings, onChange, onLog, mlKey, 
       <div className="mt-2 flex flex-wrap gap-4 text-[10px] text-muted">
         <span><i className="mr-1.5 inline-block h-2.5 w-2.5 align-[-1px]" style={{ background: 'rgba(0,255,136,.35)', border: '1px solid var(--green)' }} />Demand zone</span>
         <span><i className="mr-1.5 inline-block h-2.5 w-2.5 align-[-1px]" style={{ background: 'rgba(255,46,99,.3)', border: '1px solid var(--red)' }} />Supply zone</span>
-        <span>Dashed line = limit entry (zone body)</span>
+        <span><b style={{ color: "#00e5ff" }}>Cyan line</b> = limit entry (zone wick edge) · dotted = candle body</span>
         <span>Faded box = invalidated zone</span>
       </div>
       <div className="mt-1 flex flex-wrap gap-4 text-[10px] text-muted" title="Scores come from walk-forward testing: the model never saw that year during training. Available for M15/H1 from 2019, only for zones found with the BOT SETTING of this pair.">

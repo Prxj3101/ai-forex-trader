@@ -59,6 +59,7 @@ function toZone(z: LiveWatchZone): Zone | null {
     bottom: z.bottom,
     body_top: z.body_top ?? z.top,
     body_bottom: z.body_bottom ?? z.bottom,
+    entry: z.entry,
     disp_atr: z.disp_atr ?? 0,
     has_fvg: z.has_fvg,
     first_touch_time: null,
@@ -157,7 +158,7 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
       return [{
         direction: z.direction, zone_candle_time: z.zone_candle_time ?? z.fill_time, created_at: z.created_at ?? z.fill_time,
         top: z.top, bottom: z.bottom, body_top: z.body_top ?? z.top, body_bottom: z.body_bottom ?? z.bottom,
-        disp_atr: z.disp_atr ?? 0, has_fvg: z.has_fvg, first_touch_time: z.fill_time, first_touch_depth: null,
+        entry: z.entry, disp_atr: z.disp_atr ?? 0, has_fvg: z.has_fvg, first_touch_time: z.fill_time, first_touch_depth: null,
         invalidated_time: z.exit_ts, touches: 1,
       }]
     })

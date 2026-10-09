@@ -358,3 +358,14 @@ User explicitly requested recording this experiment for LATER, with precautions 
 - tick_engine: new exit_arrays() (run_exit on preloaded tick arrays, used for speed).
 - 9 Oct WICK-EDGE ENTRY LIVE (he said "lagate h"): config.ENTRY_LEVEL = "wick" + config.entry_price(zone, bull) (BUY limit at zone top / SELL at zone bottom; "body" = old). Used by zone_dataset_v2 (simulate_touches + zone_context) and live_features.candidates. v2 datasets rebuilt + tick labels (EUR 36,289 / GBP 11,756 / JPY 35,172 rows), ML retrained (models/*.txt, ml_walkforward.json, ml_scores). Backups of the body-entry version: data/research/body_entry_backup, models/body_entry_backup, data/research/tick_labels/body_entry.
   Result (2019-26 unseen, net): bot 3,876 trades, win 49.5%, PF 0.889 (body 0.855), -231R (body -335R), 2 of 8 years positive (2019, 2024); EUR 0.88 / GBP 0.81 / JPY 0.95. Account sim $10k 0.25%: -2.2%/yr (body -3.7%), maxDD 19%, PF 0.93. Replay 16 Sep checked: live entries = wick. Deploy: push, VPS pull, restart FOREX BOT + LIVE API.
+- 9 Oct STEP 1 EXIT (src/research/step1_exit.py -> step1_exit.csv, wick entry bot 2019-26): brain 0.889 / always 1:1 0.896 / 1:2 0.906 (2019-22 0.924, 2023-26 0.886) / trail 0.819 / 3-way brain 0.876 / ML-for-1:2 ~0.85. Account sim: brain $8,409 vs 1:1 $8,271. Decision (he agreed): keep exit brain.
+- 9 Oct STEP 2 H1 ZONES (src/research/step2_h1.py -> step2_h1.csv, step2_wf.parquet): A M15 only (current) PF 0.889 (19-22 0.884 / 23-26 0.895), acct $8,409, maxDD 19%; B H1 only 0.903 (0.947 / 0.862), 295 trades/yr, acct $8,883 maxDD 15.7% (less loss only because fewer trades, acct PF 0.92); C both 0.894 (0.906 / 0.882), 796/yr, acct $8,070 maxDD 22.7%. No variant better in both halves + account -> keep M15 only.
+- 9 Oct STEP 3 NEW ML FEATURES (src/research/step3_features.py, step3_base.csv / step3_new.csv; 3 seeds): baseline PF 0.851 / 0.875 / 0.893 (avg 0.873); + naked POC, daily/weekly level distances, session-open side, prev session/day VA (12 features): 0.841 / 0.864 / 0.870 (avg 0.858), worse in 2023-26 every seed. NOT added. Note: LightGBM seed alone moves bot PF ~0.04 (0.85-0.89) -> differences < ~0.03 are noise.
+- STEP 1-3 outcome: only kept change = wick entry. Live bot unchanged otherwise.
+
+### 9 Oct 2026 - Dashboard wick-entry update
+- Chart zone box: CYAN solid line = bot ki limit entry (`zone.entry`, wick edge); faint dotted = candle body (sirf reference).
+  Files: dashboard/frontend/src/lib/zonesPrimitive.ts, lib/api.ts (Zone.entry), LiveMarketPanel.tsx, ChartPanel.tsx legend.
+- src/api/live_status.py `_zone_from_candle` backup box ab `entry` bhejta hai; src/live/diag_zones.py `config.entry_price` use karta hai.
+- config.py docstring: purane PF numbers pe "lookahead wale" warning.
+- Dashboard ka data VPS bot se aata hai -> VPS pe git pull + FOREX BOT & LIVE API restart ke bina line body pe hi rahegi.

@@ -62,7 +62,7 @@ def main():
         print("  koi zone nahi bana -> market mein itna strong displacement (structure break) nahi aaya")
     for r in z.itertuples(index=False):
         bull = r.direction == "bull"
-        entry = r.body_top if bull else r.body_bottom
+        entry = config.entry_price(r, bull)
         sl = (r.bottom - SL_BUFFER_ATR * r.atr) if bull else (r.top + SL_BUFFER_ATR * r.atr)
         s = int(idx.searchsorted(r.created_at))
         dead = (cl[s:f] < r.bottom) if bull else (cl[s:f] > r.top)

@@ -218,7 +218,7 @@ def _zone_from_candle(m5, zt: pd.Timestamp, t: dict) -> dict | None:
     bull = t.get("direction") == "bull"
     entry, sl = float(t["entry"]), float(t["sl"])
     z = {"direction": t.get("direction"), "zone_candle_time": to_unix(zt), "created_at": to_unix(zt),
-         "disp_atr": None, "has_fvg": False}
+         "disp_atr": None, "has_fvg": False, "entry": entry}
     w = m5.loc[(m5.index >= zt) & (m5.index < zt + pd.Timedelta(minutes=15))] if m5 is not None else None
     if w is not None and len(w):
         o, c = float(w["open"].iloc[0]), float(w["close"].iloc[-1])
