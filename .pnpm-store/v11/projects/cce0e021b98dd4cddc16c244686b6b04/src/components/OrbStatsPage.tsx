@@ -131,6 +131,23 @@ export default function OrbStatsPage({ connected }: { connected: boolean }) {
         <Summary label={`LIVE SHADOW${live?.account ? ` · equity $${live.account.equity.toLocaleString()}` : ''}`} g={ls?.total} />
       </div>
 
+      {bt?.account && (
+        <div className="mb-3 border p-2" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}
+          title="The same backtest trades on a $10,000 account at the risk the live ORB uses (fixed % of equity per trade, after commission and stop slippage)">
+          <div className="text-[9px] tracking-[2px] text-muted">BACKTEST ACCOUNT 2019-2026 · ${bt.account.capital.toLocaleString()} AT {bt.account.risk_pct}% RISK PER TRADE (same as live ORB)</div>
+          <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-[12px]">
+            <span>FINAL <b style={{ color: 'var(--cyan)' }}>${bt.account.final.toLocaleString()}</b></span>
+            <span>TOTAL <b style={{ color: bt.account.total_pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{bt.account.total_pct > 0 ? '+' : ''}{bt.account.total_pct}%</b></span>
+            <span>PER YEAR <b style={{ color: bt.account.cagr_pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{bt.account.cagr_pct}%</b></span>
+            <span>MAX DD <b style={{ color: 'var(--amber)' }}>-{bt.account.max_dd_pct}%</b></span>
+            <span>WORST MONTH <b>{bt.account.worst_month_pct}%</b></span>
+            <span>WORST DAY <b>{bt.account.worst_day_pct}%</b></span>
+            <span title="Percent of months that ended with a loss">LOSING MONTHS <b>{bt.account.losing_months_pct}%</b></span>
+            <span>LONGEST LOSING STREAK <b>{bt.account.longest_losing_streak}</b></span>
+          </div>
+        </div>
+      )}
+
       <div className="mb-3 grid gap-4 md:grid-cols-2">
         {bt && <Grid rows={bt.by_range_pair} title="BACKTEST PF BY SESSION x PAIR [trades]" tip="Green = PF 1.10 or better, amber = 1.00-1.10, red = losing" />}
         <Grid rows={ls?.by_range_pair ?? []} title="LIVE PF BY SESSION x PAIR [trades]" tip="Fills up as the shadow bot trades. Under ~30 trades per cell the numbers are mostly noise." />
@@ -142,13 +159,19 @@ export default function OrbStatsPage({ connected }: { connected: boolean }) {
           <table className="w-full text-[11px]">
             <thead className="text-[9px] text-muted"><tr>
               <th className="text-left font-normal">YEAR</th><th className="text-right font-normal">TRADES</th><th className="text-right font-normal">WIN</th>
-              <th className="text-right font-normal">PF</th><th className="text-right font-normal">R</th><th className="w-[40%] font-normal" />
+              <th className="text-right font-normal">PF</th><th className="text-right font-normal">R</th>
+              {bt?.account && <th className="text-right font-normal" title={`Account return that year at ${bt.account.risk_pct}% risk`}>ACCT %</th>}
+              <th className="w-[35%] font-normal" />
             </tr></thead>
             <tbody>{(bt?.by_year ?? []).map((y) => (
               <tr key={y.year} className="border-t" style={{ borderColor: 'var(--line)' }}>
                 <td className="py-0.5">{y.year}</td><td className="text-right">{y.n}</td><td className="text-right">{y.win}%</td>
                 <td className="text-right" style={{ color: pfColor(y.pf) }}>{y.pf ?? '—'}</td>
                 <td className="text-right" style={{ color: y.r >= 0 ? 'var(--green)' : 'var(--red)' }}>{y.r > 0 ? '+' : ''}{y.r}</td>
+                {bt?.account && (() => {
+                  const v = bt.account.yearly_return_pct[String(y.year)]
+                  return <td className="text-right" style={{ color: v == null ? 'var(--muted)' : v >= 0 ? 'var(--green)' : 'var(--red)' }}>{v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`}</td>
+                })()}
                 <td className="pl-2"><div className="h-2" style={{ width: `${(Math.abs(y.r) / maxAbsR) * 100}%`, background: y.r >= 0 ? 'var(--green)' : 'var(--red)', opacity: 0.7 }} /></td>
               </tr>
             ))}</tbody>
@@ -165,8 +188,17 @@ export default function OrbStatsPage({ connected }: { connected: boolean }) {
           </div>
         </div>
         <div className="min-w-0">
-          <div className="mb-1 text-[9px] tracking-[2px] text-muted">BACKTEST EQUITY (R, after costs)</div>
-          {bt && <EquityChart points={bt.equity} unit="R" />}
+          {bt?.account ? (
+            <>
+              <div className="mb-1 text-[9px] tracking-[2px] text-muted">BACKTEST ACCOUNT ($, {bt.account.risk_pct}% risk, after costs)</div>
+              <EquityChart points={bt.account.equity} unit="$" />
+            </>
+          ) : (
+            <>
+              <div className="mb-1 text-[9px] tracking-[2px] text-muted">BACKTEST EQUITY (R, after costs)</div>
+              {bt && <EquityChart points={bt.equity} unit="R" />}
+            </>
+          )}
           {(live?.equity_curve?.length ?? 0) > 1 && (
             <>
               <div className="mb-1 mt-3 text-[9px] tracking-[2px] text-muted">LIVE SHADOW EQUITY ($)</div>

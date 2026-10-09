@@ -92,3 +92,7 @@ def backtest_stats():
 if __name__ == "__main__":
     train()
     backtest_stats()
+    from src.research.orb_risk_test import write_account_stats   # dashboard: account at the live ORB risk
+    from src.live.orb import OrbEngine
+    import inspect
+    write_account_stats(inspect.signature(OrbEngine.__init__).parameters["risk_pct"].default)

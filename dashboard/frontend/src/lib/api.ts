@@ -494,6 +494,11 @@ export type OrbBacktest = {
   by_symbol: OrbGroupStat[]
   by_year: OrbGroupStat[]
   equity: [number, number][]
+  account?: {
+    risk_pct: number; capital: number; final: number; total_pct: number; cagr_pct: number; max_dd_pct: number
+    worst_month_pct: number; worst_day_pct: number; losing_months_pct: number; longest_losing_streak: number
+    yearly_return_pct: Record<string, number>; equity: [number, number][]
+  }
   model?: { trained_at: string; rows: number; data_to: string; threshold: number; keep: number; tp_r: number; tight_q30: Record<string, number> }
 }
 

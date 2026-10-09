@@ -3,7 +3,8 @@ ORB RISK TEST (9 Oct 2026, his question): ORB trades with the SAME risk system a
 house money, brake, kill switch, daily rules, position limits; src/risk/portfolio_sim.simulate) vs plain 0.25%.
 Trades = walk-forward ORB (2019-26, model never saw the year, ML top 30% + compression, max 1 per pair per day),
 gross R + exit time recomputed on ticks (TP 2R / SL / 16:00 NY). Costs inside simulate ($5/lot + 0.2 pip on stops).
-Chalana: python src\research\orb_risk_test.py
+Chalana: python src\research\orb_risk_test.py            (compare risk settings)
+         python src\research\orb_risk_test.py account 0.4   (dashboard: backtest account at the live risk)
 """
 import sys
 from dataclasses import replace
@@ -65,7 +66,28 @@ def variants():
     }
 
 
-if __name__ == "__main__":
+def write_account_stats(risk_pct: float = 0.4):
+    """Backtest ACCOUNT at the live ORB risk (fixed %, no extra rules, $10k) -> orb_backtest_stats.json["account"]
+    for the dashboard ORB stats page (dollars, % per year, drawdown)."""
+    import json
+    f = ROOT / "data/research/orb_backtest_stats.json"
+    st = json.loads(f.read_text())
+    off = dict(brake_dd_pct=100.0, kill_dd_pct=100.0, daily_loss_pct=100.0, daily_risk_budget_pct=100.0,
+               max_open=99, max_per_symbol=1, max_usd_same_side=99, house_money_pct=0.0)
+    res = ps.simulate(candidates(), replace(ps.RiskConfig(capital=10_000.0, commission_per_lot=5.0),
+                                            risk_pct=risk_pct, risk_cap_pct=risk_pct, **off))
+    st["account"] = dict(risk_pct=risk_pct, capital=10_000.0, final=res["final_equity"], total_pct=res["total_return_pct"],
+                         cagr_pct=res["cagr_pct"], max_dd_pct=res["max_drawdown_pct"], worst_month_pct=res["worst_month_pct"],
+                         worst_day_pct=res["worst_day_pct"], losing_months_pct=res["losing_months_pct"],
+                         longest_losing_streak=res["longest_losing_streak"], yearly_return_pct=res["yearly_return_pct"],
+                         equity=[[p["time"], p["value"]] for p in res["equity_curve"]])
+    f.write_text(json.dumps(st))
+    print("account stats @", risk_pct, "%:", {k: v for k, v in st["account"].items() if k not in ("equity", "yearly_return_pct")})
+
+
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "account":
+    write_account_stats(float(sys.argv[2]) if len(sys.argv) > 2 else 0.4)
+elif __name__ == "__main__":
     pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
     c = candidates()
     print("ORB trades:", len(c), "| R check (gross tick vs backtest net):", round(float((c.r - c.r_net_bt).mean()), 3))

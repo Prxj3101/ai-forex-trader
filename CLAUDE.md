@@ -20,7 +20,7 @@ Read this first before doing anything in this project.
 >> LATEST (9 Oct 2026, read this first):
    - Zone bot: no edge (tick-exact PF ~0.89, acct sim -2%/yr). Keeps running in shadow on the VPS, NO more tuning.
    - ORB-ML SHADOW BUILT (his go, "lean + chart lines + ORB panel + stats page"): src/live/orb.py runs inside src/live/shadow.py (run_live),
-     SEPARATE $10k paper account, 0.25%/trade. Ranges ASIA / LON30 / LON60 on EUR/GBP/USDJPY; compression (NR4 or TIGHT) -> buy/sell stop,
+     SEPARATE $10k paper account, 0.4%/trade (changed from 0.25% on 9 Oct, his ask; src/live/orb.py OrbEngine risk_pct). Ranges ASIA / LON30 / LON60 on EUR/GBP/USDJPY; compression (NR4 or TIGHT) -> buy/sell stop,
      first break to 11:00 NY -> ML (models/orb_brain.txt, threshold in models/orb_meta.json, keep top 30%) -> trade, SL other side, TP 2R,
      close 16:00 NY, max 1 ORB per pair per day. Files: data/live/orb_state.json, orb_trades.csv, orb_decisions.csv. Reset only ORB:
      python src\live\shadow.py --reset-orb. Model retrain: python src\research\orb_train.py (also writes data/research/orb_backtest_stats.json).
@@ -445,3 +445,13 @@ User explicitly requested recording this experiment for LATER, with precautions 
   (2.9%/yr), maxDD 6.9%, avg risk only 0.25% (drops to 0.25% after 3% DD, recovers only at 1% DD -> big wins at 0.25, losses at 0.5);
   D combo without daily/limits +26.1%; E 0.25% + house money + rules +25.1%. -> combo/house money does NOT help ORB (slightly worse).
   DECISION pending his reply; recommendation: keep ORB fixed 0.25% in shadow; consider 0.5% only after live confirms the edge.
+- 9 Oct ORB RISK -> 0.4% (his "ha kr"): fixed 0.25/0.3/0.4/0.5 on ORB trades 2019-26 = +30/+38/+53/+70% total, 3.4/4.2/5.6/7.1%/yr,
+  maxDD 6.4/7.7/10.2/12.7%, worst day -0.8/-1.0/-1.3/-1.6%. Live ORB shadow now 0.4% (needs VPS pull + FOREX BOT restart).
+- 9 Oct ZONE BOT RISK TEST (src/research/zone_risk_test.py, 3,584 zone trades 2019-26 after VA/act/news, cands cached
+  data/research/zone_risk_cands.parquet): EVERY setting loses (PF 0.90-0.93). Fixed 0.25% -28.9% (maxDD 31.8%), 0.4% -46.9%, 0.5% -49.6%;
+  CURRENT combo -17.9% (maxDD 19.7%, avg risk only 0.13% because brake/reduce keeps it small); combo without house money identical
+  (account never in profit -> house money never used); 0.25% + brake -16.3%; old 0.25% + house money + brake -15.9% (least bad).
+  Conclusion: risk sizing cannot fix a strategy with no edge; brake-type rules only lose slower. Zone bot settings unchanged.
+- 9 Oct ORB stats page: backtest ACCOUNT at the live ORB risk (0.4%, $10k): final $15,319, +53.2%, 5.6%/yr, maxDD 10.2%, worst month -3.6%,
+  worst day -1.32%, 42% losing months, longest losing streak 13. Stored in data/research/orb_backtest_stats.json["account"]
+  (python src\research\orb_risk_test.py account 0.4; orb_train.py re-adds it automatically). Shown on the ORB tab (card, ACCT % per year, $ curve).
