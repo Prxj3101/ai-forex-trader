@@ -79,7 +79,7 @@ export default function OrbPanel({ connected }: { connected: boolean }) {
   const header = (
     <div className="ptitle flex-wrap">
       <span>ORB SHADOW</span>
-      <em title="Opening range breakout: Asia (19:00-02:00 NY) and London (03:00-03:30 / 04:00) ranges. Trades only when the market was compressed (NR4 or tight range) and the ML score is in the top 30%. Separate $10,000 paper account, 0.25% risk per trade, TP 2R or close at 16:00 NY.">
+      <em title="Opening range breakout: Asia (19:00-02:00 NY) and London (03:00-03:30 / 04:00) ranges. Trades only when the market was compressed (NR4 or tight range) and the ML score is in the top 30%. Separate $10,000 paper account, 0.4% risk per trade, TP 2R or close at 16:00 NY.">
         ASIA / LONDON RANGE BREAKOUT · COMPRESSION + ML · SEPARATE PAPER ACCOUNT
       </em>
     </div>

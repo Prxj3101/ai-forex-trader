@@ -17,7 +17,7 @@ import type { OrbRange } from './api'
 
 type Target = Parameters<IPrimitivePaneRenderer['draw']>[0]
 type Line = { x1: number; x2: number; y: number; color: string; dash: boolean; width: number; label?: string }
-type Rect = { x1: number; x2: number; yTop: number; yBot: number; color: string; alpha: number; dashed: boolean; label: string }
+type Rect = { x1: number; x2: number; yTop: number; yBot: number; color: string; alpha: number; dashed: boolean; label: string; row: number }
 
 export const ORB_COLORS: Record<string, string> = { ASIA: '#b388ff', LON30: '#ffb020', LON60: '#ff7a45' }
 const ARMED_LIKE = new Set(['armed', 'no_break', 'skip_ml', 'skip_daily', 'skip_lot', 'traded'])
@@ -50,8 +50,9 @@ class OrbRenderer implements IPrimitivePaneRenderer {
           ctx.strokeStyle = '#090b0e'
           ctx.lineWidth = 3 * hr
           ctx.fillStyle = r.color
-          ctx.strokeText(r.label, x + 3 * hr, y + h + 13 * vr)
-          ctx.fillText(r.label, x + 3 * hr, y + h + 13 * vr)
+          const ly = y + h + (13 + r.row * 13) * vr        // LON30 / LON60 same start -> labels on separate rows
+          ctx.strokeText(r.label, x + 3 * hr, ly)
+          ctx.fillText(r.label, x + 3 * hr, ly)
         }
         ctx.globalAlpha = 1
       }
@@ -162,6 +163,7 @@ export class OrbPrimitive implements ISeriesPrimitive<Time> {
       rd.rects.push({
         x1, x2, yTop, yBot, color: c, alpha: weak ? 0.35 : 1, dashed: forming,
         label: `${r.range} ${r.status_text}`,
+        row: r.range === 'LON60' ? 1 : 0,
       })
       if (ARMED_LIKE.has(r.status)) {
         const end = r.break_time ?? Math.min(r.w_end, Math.max(now, r.t1))

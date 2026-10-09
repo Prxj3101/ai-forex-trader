@@ -439,3 +439,9 @@ User explicitly requested recording this experiment for LATER, with precautions 
   GBP London stable both periods: GBPUSD LON60 EOD 1.17 / 1.26, GBPJPY LON30 EOD 1.23 / 1.08 (9/11 yrs positive).
   VERDICT: "home session" theory NOT confirmed broadly; most consistent thing = GBP (vs USD/JPY) breakout at London open.
   Only new candidate worth ticks: GBPJPY London.
+- 9 Oct ORB RISK TEST (his question: zone-bot risk system on ORB; src/research/orb_risk_test.py, portfolio_sim.simulate,
+  1,417 walk-forward ORB trades 2019-26, tick exit times): A fixed 0.25% = +30.1% total (3.4%/yr), maxDD 6.4%;
+  B fixed 0.5% = +70.4% (7.1%/yr), maxDD 12.7%; C ZONE BOT EXACT combo 0.5/0.25 + house money + brake + kill + daily + limits = +24.7%
+  (2.9%/yr), maxDD 6.9%, avg risk only 0.25% (drops to 0.25% after 3% DD, recovers only at 1% DD -> big wins at 0.25, losses at 0.5);
+  D combo without daily/limits +26.1%; E 0.25% + house money + rules +25.1%. -> combo/house money does NOT help ORB (slightly worse).
+  DECISION pending his reply; recommendation: keep ORB fixed 0.25% in shadow; consider 0.5% only after live confirms the edge.

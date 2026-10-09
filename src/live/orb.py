@@ -11,7 +11,7 @@ Strategy (backtest: src/research/orb_nr_test.py + orb_ml_test.py, model: src/res
   4. Ek pair pe ek din max 1 ORB trade (pehle wala jeetta hai).
   5. Trade: SL = dabbe ki doosri side, TP = 2R, 16:00 NY tak band nahi hua toh wahin close. Har tick pe
      (src/backtest/tick_engine.py, wahi rules jo backtest mein).
-  Account: alag $10,000, har trade 0.25% risk, $5/lot commission + 0.2 pip stop slippage (backtest jaisa).
+  Account: alag $10,000, har trade 0.4% risk (9 Oct: 0.25 -> 0.4 on his ask; backtest 0.4% = ~5.6%/yr, maxDD ~10%), $5/lot commission + 0.2 pip stop slippage (backtest jaisa).
 Files (data/live): orb_state.json (dashboard + restart), orb_trades.csv (band trades), orb_decisions.csv (har dabba).
 """
 from __future__ import annotations
@@ -160,7 +160,7 @@ def break_features(rec: dict, m5: pd.DataFrame, break_ms: int, bull: bool, entry
 
 class OrbEngine:
     def __init__(self, feed, symbols=None, out_dir: Path = LIVE, log=print, capital: float = 10_000.0,
-                 risk_pct: float = 0.25, resume: bool = True, write_view: bool = True):
+                 risk_pct: float = 0.4, resume: bool = True, write_view: bool = True):
         self.feed, self.log, self.out, self.write_view = feed, log, out_dir, write_view
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = OrbBrain()
