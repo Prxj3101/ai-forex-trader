@@ -170,6 +170,7 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
                 have.add(fts)
     except Exception:  # noqa: BLE001
         pass
+    out["orb"] = chart_orb(live, symbol)                 # ORB dabbe (src/live/orb.py)
     return out
 
 
@@ -369,3 +370,122 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
     else:
         out["whatif"] = []
     return out
+
+
+# ----------------------------------------------------------------------
+# ORB SHADOW (src/live/orb.py): data/live/orb_state.json + orb_trades.csv
+# ----------------------------------------------------------------------
+ORB_STATUS_TEXT = {"waiting": "WAITING", "forming": "FORMING", "armed": "ARMED", "skip_nocomp": "NO COMPRESSION",
+                   "no_break": "NO BREAK", "skip_ml": "ML SKIP", "skip_daily": "1/DAY LIMIT", "skip_lot": "LOT TOO SMALL",
+                   "traded": "TRADED", "no_data": "NO DATA"}
+
+
+def _chart_bars(live: Path, symbol: str) -> pd.DataFrame | None:
+    """Bot ke M5 bars (chart_SYM.json) + chalti candle -> forming dabbe ka abhi tak ka high / low."""
+    f = live / f"chart_{symbol}.json"
+    if not f.exists():
+        return None
+    try:
+        bars = list(json.loads(f.read_text()).get("bars") or [])
+        tf_ = live / "ticks.json"
+        if tf_.exists():
+            fb = (json.loads(tf_.read_text()).get("forming") or {}).get(symbol)
+            if fb and bars and fb[0] > bars[-1][0]:
+                bars.append(fb)
+        d = pd.DataFrame(bars, columns=["t", "open", "high", "low", "close"])
+        return d
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _orb_ranges(live: Path, st: dict, symbol: str | None = None) -> list[dict]:
+    recs = list((st.get("recs") or {}).values())
+    if symbol:
+        recs = [r for r in recs if r.get("symbol") == symbol]
+    bars_cache: dict = {}
+    out = []
+    for r in recs:
+        hi, lo = r.get("hi"), r.get("lo")
+        if r.get("status") == "forming":                 # abhi ban raha: chart candles se running high / low
+            s = r["symbol"]
+            if s not in bars_cache:
+                bars_cache[s] = _chart_bars(live, s)
+            d = bars_cache[s]
+            if d is not None and len(d):
+                m = (d.t * 1000 >= r["r_start"]) & (d.t * 1000 < r["r_end"])
+                if m.any():
+                    hi, lo = float(d.high[m].max()), float(d.low[m].min())
+        trade = next((t for t in st.get("open", []) if t.get("day") == r.get("day") and t.get("symbol") == r.get("symbol")
+                      and t.get("range") == r.get("range")), None)
+        out.append(dict(day=r.get("day"), symbol=r.get("symbol"), range=r.get("range"), status=r.get("status"),
+                        status_text=ORB_STATUS_TEXT.get(r.get("status"), str(r.get("status")).upper()),
+                        reason=r.get("reason", ""), t0=int(r["r_start"] // 1000), t1=int(r["r_end"] // 1000),
+                        w_end=int(r["w_end"] // 1000), eod=int(r["eod"] // 1000), hi=clean(hi), lo=clean(lo),
+                        w_ratio=clean(r.get("w_ratio")), nr4=r.get("nr4"), tight=r.get("tight"),
+                        direction=r.get("direction"), break_time=int(r["break_ms"] // 1000) if r.get("break_ms") else None,
+                        entry=clean(r.get("entry")), sl=clean(r.get("sl")), score=clean(r.get("score")),
+                        open=bool(trade), tp=clean(trade.get("tp")) if trade else None,
+                        r_now=clean(trade.get("r_now")) if trade else None))
+    order = {"ASIA": 0, "LON30": 1, "LON60": 2}
+    out.sort(key=lambda x: (x["day"], x["symbol"], order.get(x["range"], 9)))
+    return out
+
+
+def _orb_live_stats(tr: pd.DataFrame) -> dict:
+    if tr.empty:
+        return {}
+
+    def summ(g):
+        r = g["r"].astype(float)
+        return dict(n=int(len(g)), pf=_pf(r), win=round(100 * float((r > 0).mean()), 1),
+                    r=round(float(r.sum()), 2), pnl=round(float(g["pnl"].sum()), 2))
+    return dict(total=summ(tr),
+                by_range_pair=[dict(range=rg, symbol=s, **summ(g)) for (rg, s), g in tr.groupby(["range", "symbol"])],
+                by_range=[dict(range=rg, **summ(g)) for rg, g in tr.groupby("range")],
+                by_symbol=[dict(symbol=s, **summ(g)) for s, g in tr.groupby("symbol")])
+
+
+def build_orb(live: Path, trades: int = 50) -> dict:
+    """ORB panel + stats page: account, aaj ke dabbe (har pair), khule / band ORB trades, live stats."""
+    out: dict = {"status": "none"}
+    f = live / "orb_state.json"
+    if not f.exists():
+        return out
+    try:
+        st = json.loads(f.read_text())
+    except Exception:  # noqa: BLE001
+        return out
+    now = pd.Timestamp.now(tz="UTC")
+    upd = pd.Timestamp(st["updated"]) if st.get("updated") else None
+    cap, eq, peak = float(st.get("capital", 10000)), float(st.get("equity", 10000)), float(st.get("peak", 10000))
+    out.update(status="ok", updated=to_unix(upd) if upd is not None else None,
+               age_sec=round((now - upd).total_seconds()) if upd is not None else None,
+               threshold=st.get("threshold"), tight_q30=st.get("tight_q30"),
+               account=dict(capital=cap, equity=round(eq, 2), peak=round(peak, 2), pnl=round(eq - cap, 2),
+                            total_pct=round((eq / cap - 1) * 100, 2), dd_pct=round((peak - eq) / peak * 100, 2) if peak else 0,
+                            risk_pct=st.get("risk_pct"), n_closed=st.get("n_closed", 0)))
+    out["open"] = [{k: clean(t.get(k)) for k in ("day", "symbol", "range", "direction", "entry", "sl", "tp", "lots",
+                                                    "risk_usd", "score", "r_now", "fill_time")} for t in st.get("open", [])]
+    ny_today = str(now.tz_convert("America/New_York").date())
+    rngs = _orb_ranges(live, st)
+    days = sorted({r["day"] for r in rngs})
+    show = [d for d in days if d >= ny_today][:1] or days[-1:]       # aaj (ya agla din) ke dabbe
+    out["ranges"] = [r for r in rngs if r["day"] in show]
+    out["day"] = show[0] if show else None
+    tf_ = live / "orb_trades.csv"
+    tr = pd.read_csv(tf_) if tf_.exists() else pd.DataFrame()
+    out["trades"] = _clean_rows(tr.tail(trades).iloc[::-1]) if len(tr) else []
+    out["live_stats"] = _orb_live_stats(tr)
+    if len(tr):
+        out["equity_curve"] = [[int(pd.Timestamp(t).timestamp()), float(e)] for t, e in zip(tr.exit_time, tr.equity)]
+    return out
+
+
+def chart_orb(live: Path, symbol: str) -> list[dict]:
+    f = live / "orb_state.json"
+    if not f.exists():
+        return []
+    try:
+        return _orb_ranges(live, json.loads(f.read_text()), symbol)
+    except Exception:  # noqa: BLE001
+        return []

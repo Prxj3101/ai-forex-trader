@@ -1,0 +1,57 @@
+{
+  "trained_at": "2026-10-09T12:55:29+00:00",
+  "rows": 24931,
+  "data_to": "2026-10-08",
+  "threshold": 0.41912,
+  "keep": 0.3,
+  "tp_r": 2.0,
+  "tight_q30": {
+    "ASIA": 0.7126944039810033,
+    "LON30": 0.7331975560081779,
+    "LON60": 0.7282184655395882
+  },
+  "features": [
+    "nr3",
+    "nr4",
+    "nr5",
+    "nr6",
+    "nr7",
+    "inside",
+    "w_ratio",
+    "range_atr",
+    "h4_aligned",
+    "d1_mom_aligned",
+    "prevday_aligned",
+    "prevday_pos",
+    "asia_pos",
+    "break_delay_min",
+    "weekday",
+    "act_15m",
+    "spread_r",
+    "risk_pips",
+    "symbol",
+    "range"
+  ],
+  "symbols": [
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY"
+  ],
+  "ranges": [
+    "ASIA",
+    "LON30",
+    "LON60"
+  ],
+  "params": {
+    "n_estimators": 300,
+    "learning_rate": 0.03,
+    "num_leaves": 15,
+    "min_child_samples": 100,
+    "subsample": 0.8,
+    "subsample_freq": 1,
+    "colsample_bytree": 0.8,
+    "verbose": -1
+  },
+  "seed": 1,
+  "label": "net R at 2R > 0 ($5/lot + 0.2 pip stop slippage)"
+}

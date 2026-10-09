@@ -32,6 +32,12 @@ SYMBOLS = {
     "USDJPY": ins.INSTRUMENT_FX_MAJORS_USD_JPY,
     "USDCAD": ins.INSTRUMENT_FX_MAJORS_USD_CAD,
     "AUDUSD": ins.INSTRUMENT_FX_MAJORS_AUD_USD,
+    # session-wise ORB test (9 Oct 2026): JPY crosses for Asia, GBP crosses for London
+    "NZDUSD": ins.INSTRUMENT_FX_MAJORS_NZD_USD,
+    "EURJPY": ins.INSTRUMENT_FX_CROSSES_EUR_JPY,
+    "GBPJPY": ins.INSTRUMENT_FX_CROSSES_GBP_JPY,
+    "AUDJPY": ins.INSTRUMENT_FX_CROSSES_AUD_JPY,
+    "EURGBP": ins.INSTRUMENT_FX_CROSSES_EUR_GBP,
 }
 
 # Humara naam (file ke liye) -> Dukascopy ka naam (download ke liye)

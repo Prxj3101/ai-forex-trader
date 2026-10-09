@@ -785,6 +785,12 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
         print(f"news: {len(guard.events)} high-impact events this week, block {config.NEWS_BLOCK_BEFORE_MIN} min before "
               f"to {config.NEWS_BLOCK_AFTER_MIN} min after" if config.NEWS_BLOCK else "news: prop rules only")
     eng = ShadowEngine(feed, news_guard=guard, resume=True)
+    orb = None
+    try:                                         # ORB shadow (src/live/orb.py): alag virtual account, zone bot pe asar nahi
+        from src.live.orb import OrbEngine
+        orb = OrbEngine(feed, resume=True)
+    except Exception as e:  # noqa: BLE001 - ORB na chale toh bhi zone bot chalta rahe
+        print(f"ORB off: {e.__class__.__name__}: {e}")
     last = {}
     news_hour = pd.Timestamp.now(tz="UTC").floor("h")
     last_health = 0.0
@@ -817,12 +823,20 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
                 eng.save()
             if eng._redecide and eng.redecide_pending():               # trade band -> watchlist / orders turant update
                 eng.save()
+            if orb is not None:
+                try:
+                    if orb.step():                                     # ORB: dabba / break / trade har ~1 s
+                        orb.save()
+                except Exception as e:  # noqa: BLE001
+                    print(f"ORB step error: {e.__class__.__name__}: {e}")
             if time.time() - last_health >= health_every_s:
                 monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / VPS sehat (har ~5 s)
                 last_health = time.time()
             time.sleep(poll_s)
     except KeyboardInterrupt:
         eng.save()
+        if orb is not None:
+            orb.save()
         feed.close()
         print("Shadow mode band. Files: data/live/decisions.csv, shadow_trades.csv, shadow_state.json")
 
@@ -831,14 +845,20 @@ def run_replay(start: str, end: str, out: Path):
     from src.live.feeds import ReplayFeed
     feed = ReplayFeed(config.CORE_SYMBOLS, start, end, HISTORY_DAYS)
     out.mkdir(parents=True, exist_ok=True)
-    for f in ("decisions.csv", "shadow_trades.csv", "closed_trades.csv", "whatif.csv", "shadow_state.json"):
+    for f in ("decisions.csv", "shadow_trades.csv", "closed_trades.csv", "whatif.csv", "shadow_state.json",
+              "orb_state.json", "orb_trades.csv", "orb_decisions.csv"):
         (out / f).unlink(missing_ok=True)
     eng = ShadowEngine(feed, out_dir=out, spread_floor=False, write_view=False)   # Dukascopy = training data, floor nahi
+    from src.live.orb import OrbEngine
+    orb = OrbEngine(feed, out_dir=out, resume=False, write_view=False)
     t0 = time.time()
     for i, _ in enumerate(feed):
         for s in eng.symbols:
             eng.step(s)
+        orb.step()
     eng.save()
+    orb.save()
+    print(f"ORB replay: closed {orb.n_closed}, open {len(orb.open)}, ORB equity ${orb.equity:,.2f}")
     print(f"replay {start} -> {end}: {len(feed.times)} candles x {len(eng.symbols)} pairs in {time.time() - t0:.0f}s | "
           f"trades closed {len(eng.closed)}, open {len(eng.open)}, equity ${eng.equity:,.2f}")
     return eng
@@ -848,9 +868,13 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Shadow mode (no orders)")
     ap.add_argument("--replay", nargs=2, metavar=("START", "END"), help="purane data pe chalao, e.g. 2026-09-21 2026-09-26")
     ap.add_argument("--reset", action="store_true", help="purana hisaab hata ke $10,000 se fresh shuru")
+    ap.add_argument("--reset-orb", action="store_true", help="sirf ORB ka hisaab fresh (zone bot ka nahi)")
     a = ap.parse_args()
     if a.reset and not a.replay:
         reset_state()
+    if (a.reset or a.reset_orb) and not a.replay:
+        from src.live.orb import reset_state as reset_orb
+        reset_orb()
     if a.replay:
         run_replay(a.replay[0], a.replay[1], LIVE / "replay")
     else:

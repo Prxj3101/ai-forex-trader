@@ -20,6 +20,7 @@ import { useNow } from '../lib/hooks'
 import { NY, fmtTick, fmtTs } from '../lib/time'
 import { type Segment, SegmentsPrimitive } from '../lib/segmentsPrimitive'
 import { ZonesPrimitive } from '../lib/zonesPrimitive'
+import { ORB_COLORS, OrbPrimitive } from '../lib/orbPrimitive'
 
 /*
   LIVE MARKET: bot ke apne MT5 (broker) candles, jo zones woh abhi dekh raha hai, aur is hafte ki news.
@@ -78,12 +79,13 @@ function untilText(sec: number) {
   return sec >= 0 ? `IN ${t}` : `${t} AGO`
 }
 
-function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: string; connected: boolean; ticks: LiveTicks | null }) {
+function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol: string; tf: string; connected: boolean; ticks: LiveTicks | null; showOrb?: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const liveBar = useRef<{ time: number; open: number; high: number; low: number; close: number } | null>(null)
   const chart = useRef<IChartApi | null>(null)
   const series = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const zones = useRef<ZonesPrimitive | null>(null)
+  const orbRef = useRef<OrbPrimitive | null>(null)
   const segsRef = useRef<SegmentsPrimitive | null>(null)
   const markers = useRef<ISeriesMarkersPluginApi<Time> | null>(null)
   const lines = useRef<IPriceLine[]>([])
@@ -108,6 +110,9 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
     s.attachPrimitive(p)
     const sg = new SegmentsPrimitive()
     s.attachPrimitive(sg)
+    const ob = new OrbPrimitive()
+    s.attachPrimitive(ob)
+    orbRef.current = ob
     segsRef.current = sg
     chart.current = c
     series.current = s
@@ -135,6 +140,7 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
     // naya pair / TF: purana chart turant saaf karo (warna galat pair ka data dikhta rehta)
     series.current?.setData([])
     zones.current?.setZones([], [])
+    orbRef.current?.setRanges([], [])
     segsRef.current?.setSegments([], [])
     markers.current?.setMarkers([])
     load()
@@ -163,6 +169,7 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
       }]
     })
     zones.current?.setZones([...data.zones.map(toZone).filter((z): z is Zone => z !== null), ...traded], barTimes)
+    orbRef.current?.setRanges(data.orb ?? [], barTimes)
     const lc = data.candles[data.candles.length - 1]
     liveBar.current = lc ? { ...lc } : null
 
@@ -187,6 +194,10 @@ function LiveChartBox({ symbol, tf, connected, ticks }: { symbol: string; tf: st
       chart.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 120), to: data.candles.length + 3 })
     }
   }, [data, symbol, tf])
+
+  useEffect(() => {
+    orbRef.current?.setVisible(showOrb)
+  }, [showOrb])
 
   // har ~1 s: chal rahi candle ko naye bhav se hilao (MT5 jaisa), 5 s wale chart poll ka wait nahi
   const tickBar = ticks?.forming[symbol]
@@ -380,6 +391,7 @@ export function CloseButton({ t, closing, pnl }: { t: LiveTickTrade; closing: bo
 export default function LiveMarketPanel({ connected, data, ticks = null }: { connected: boolean; data: LiveStatus | null; ticks?: LiveTicks | null }) {
   const [symbol, setSymbol] = useState('EURUSD')
   const [tf, setTf] = useState<(typeof TFS)[number]>('M15')
+  const [showOrb, setShowOrb] = useState(true)
   const now = useNow(30_000) / 1000
   const h = data?.health
   const prices = useMemo(() => h?.prices ?? {}, [h?.prices])
@@ -429,17 +441,22 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
             {TFS.map((t) => (
               <button key={t} className={`chip ${t === tf ? 'on' : ''}`} onClick={() => setTf(t)}>{t}</button>
             ))}
+            <span className="mx-1 text-muted">|</span>
+            <button className={`chip ${showOrb ? 'on' : ''}`} onClick={() => setShowOrb((v) => !v)}
+              title="Show / hide the ORB ranges (Asia / London boxes) on the chart">ORB</button>
             {prices[symbol] && (
               <span className="ml-auto text-[11px]">
                 <span className="text-muted">BID</span> {prices[symbol].bid.toFixed(digitsOf(symbol))} <span className="text-muted">ASK</span> {prices[symbol].ask.toFixed(digitsOf(symbol))}
               </span>
             )}
           </div>
-          <LiveChartBox symbol={symbol} tf={tf} connected={connected} ticks={ticks} />
+          <LiveChartBox symbol={symbol} tf={tf} connected={connected} ticks={ticks} showOrb={showOrb} />
           <div className="mt-1 text-[9px] text-muted">
             Boxes = zones (bright = watching now, faded = already traded). Trade lines: <span style={{ color: '#00e5ff' }}>ENTRY</span> ·{' '}
             <span style={{ color: '#ff426e' }}>SL</span> · <span style={{ color: '#00ff9c' }}>TP (1:1 trades)</span> ·{' '}
             <span style={{ color: '#ffb020' }}>TRAIL SL (moves after +1R)</span>. Dotted = READY zone plan. Arrows = fills, circles = exits with R.
+            {' '}ORB ranges: <span style={{ color: ORB_COLORS.ASIA }}>ASIA</span> · <span style={{ color: ORB_COLORS.LON30 }}>LON30</span> ·{' '}
+            <span style={{ color: ORB_COLORS.LON60 }}>LON60</span> (dashed box = still forming, faded = no compression, dashed lines = breakout levels until 11:00 NY).
           </div>
         </div>
 

@@ -439,6 +439,64 @@ export type LiveTickTrade = {
   r_now?: number | null
 }
 
+// ---------------- ORB shadow (src/live/orb.py) ----------------
+export type OrbRange = {
+  day: string
+  symbol: string
+  range: 'ASIA' | 'LON30' | 'LON60'
+  status: string
+  status_text: string
+  reason: string
+  t0: number
+  t1: number
+  w_end: number
+  eod: number
+  hi: number | null
+  lo: number | null
+  w_ratio: number | null
+  nr4: number | null
+  tight: number | null
+  direction: 'bull' | 'bear' | null
+  break_time: number | null
+  entry: number | null
+  sl: number | null
+  score: number | null
+  open: boolean
+  tp: number | null
+  r_now: number | null
+}
+
+export type OrbGroupStat = { n: number; pf: number | null; win: number; r: number; pnl?: number; range?: string; symbol?: string; year?: number }
+
+export type OrbLive = {
+  status: string
+  source?: string
+  error?: string
+  updated?: number | null
+  age_sec?: number | null
+  threshold?: number
+  tight_q30?: Record<string, number>
+  day?: string | null
+  account?: { capital: number; equity: number; peak: number; pnl: number; total_pct: number; dd_pct: number; risk_pct: number; n_closed: number }
+  open?: { day: string; symbol: string; range: string; direction: 'bull' | 'bear'; entry: number; sl: number; tp: number; lots: number; risk_usd: number; score: number; r_now: number | null; fill_time: string }[]
+  ranges?: OrbRange[]
+  trades?: { day: string; symbol: string; range: string; direction: 'bull' | 'bear'; fill_time: string; exit_time: string; entry: number; sl: number; tp: number; score: number; lots: number; r: number; exit_reason: string; pnl: number; equity: number }[]
+  live_stats?: { total?: OrbGroupStat; by_range_pair?: OrbGroupStat[]; by_range?: OrbGroupStat[]; by_symbol?: OrbGroupStat[] }
+  equity_curve?: [number, number][]
+}
+
+export type OrbBacktest = {
+  source: string
+  total: OrbGroupStat
+  max_dd_r: number
+  by_range_pair: OrbGroupStat[]
+  by_range: OrbGroupStat[]
+  by_symbol: OrbGroupStat[]
+  by_year: OrbGroupStat[]
+  equity: [number, number][]
+  model?: { trained_at: string; rows: number; data_to: string; threshold: number; keep: number; tp_r: number; tight_q30: Record<string, number> }
+}
+
 export type LiveChart = {
   symbol: string
   tf: string
@@ -461,6 +519,7 @@ export type LiveChart = {
     fill_time: number | null
   }[]
   trades: { direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number }[]
+  orb?: OrbRange[]
   traded_zones?: {
     direction: 'bull' | 'bear'
     top: number | null
@@ -549,6 +608,8 @@ export const api = {
   live: () => request<LiveStatus>('/api/live'),
   liveChart: (symbol: string, tf: string) => request<LiveChart>('/api/live/chart', { symbol, tf }),
   liveTicks: () => request<LiveTicks>('/api/live/ticks'),
+  liveOrb: () => request<OrbLive>('/api/live/orb'),
+  orbBacktest: () => request<OrbBacktest>('/api/orb/backtest'),
   liveControl: (c: LiveControl) => request<{ ok: boolean }>('/api/live/control', { ...c }, 'POST'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>

@@ -89,6 +89,14 @@ def live_ticks(x_live_token: str = Header(default="")):
     return live_status.build_ticks(LIVE)
 
 
+@app.get("/api/live/orb")
+def live_orb(x_live_token: str = Header(default="")):
+    """ORB shadow: account, aaj ke dabbe, trades, live stats."""
+    if not hmac.compare_digest(x_live_token, TOKEN):
+        raise HTTPException(401, "bad token")
+    return live_status.build_orb(LIVE)
+
+
 @app.post("/api/live/control")
 def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
                  fill_time: int | None = None, x_live_token: str = Header(default="")):

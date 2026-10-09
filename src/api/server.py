@@ -498,6 +498,33 @@ def live_ticks():
     return _remote_get(remote, "/api/live/ticks", {}, timeout=4)
 
 
+@app.get("/api/live/orb")
+def live_orb():
+    """ORB shadow (src/live/orb.py): account, aaj ke dabbe, ORB trades, live stats (VPS ya isi PC ka data)."""
+    from src.api import live_status as ls
+    remote = _remote_cfg()
+    if remote is None:
+        return ls.build_orb(LIVE) | {"source": "local"}
+    r = _remote_get(remote, "/api/live/orb", {})
+    if r.get("error", "").startswith("VPS error 404"):
+        r["error"] = "VPS live API is an old version: git pull + restart LIVE API on the VPS"
+    return r
+
+
+@app.get("/api/orb/backtest")
+def orb_backtest():
+    """ORB backtest numbers (walk-forward 2019-26) for the ORB stats page: data/research/orb_backtest_stats.json."""
+    f = ROOT / "data" / "research" / "orb_backtest_stats.json"
+    if not f.exists():
+        raise HTTPException(404, "run: python src\\research\\orb_train.py")
+    meta = ROOT / "models" / "orb_meta.json"
+    out = json.loads(f.read_text())
+    if meta.exists():
+        m = json.loads(meta.read_text())
+        out["model"] = {k: m.get(k) for k in ("trained_at", "rows", "data_to", "threshold", "keep", "tp_r", "tight_q30")}
+    return out
+
+
 @app.post("/api/live/control")
 def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
                  fill_time: int | None = None):

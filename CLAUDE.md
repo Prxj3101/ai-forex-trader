@@ -17,6 +17,23 @@ Read this first before doing anything in this project.
 - Agreed approach: backtesting first, then paper trading on a demo account for 2-3 months. Real money only if results are consistently positive after fees, and only an amount he can afford to lose.
 
 ## CURRENT PLAN / TO-DO (keep this section updated; he relies on it, he forgets what is pending)
+>> LATEST (9 Oct 2026, read this first):
+   - Zone bot: no edge (tick-exact PF ~0.89, acct sim -2%/yr). Keeps running in shadow on the VPS, NO more tuning.
+   - ORB-ML SHADOW BUILT (his go, "lean + chart lines + ORB panel + stats page"): src/live/orb.py runs inside src/live/shadow.py (run_live),
+     SEPARATE $10k paper account, 0.25%/trade. Ranges ASIA / LON30 / LON60 on EUR/GBP/USDJPY; compression (NR4 or TIGHT) -> buy/sell stop,
+     first break to 11:00 NY -> ML (models/orb_brain.txt, threshold in models/orb_meta.json, keep top 30%) -> trade, SL other side, TP 2R,
+     close 16:00 NY, max 1 ORB per pair per day. Files: data/live/orb_state.json, orb_trades.csv, orb_decisions.csv. Reset only ORB:
+     python src\live\shadow.py --reset-orb. Model retrain: python src\research\orb_train.py (also writes data/research/orb_backtest_stats.json).
+     Replay check src/live/orb_replay_check.py: 6 weeks Jan-Feb 2026 -> 100/100 breaks, 20/20 trades identical to backtest, R diff <= 0.0003.
+     Tests: tests/test_orb_live.py (5) + old 31 pass.
+     Dashboard: chart ORB boxes (lib/orbPrimitive.ts, ORB chip toggle), ORB SHADOW panel on LIVE tab (components/OrbPanel.tsx),
+     new ORB tab = stats page (components/OrbStatsPage.tsx: backtest 2019-26 vs live, session x pair grid, by year, equity).
+     API: /api/live/orb (server.py proxy + live_api.py), /api/orb/backtest (laptop only), build_chart now returns "orb".
+     Backtest expectation (walk-forward 2019-26, max 1/day): PF 1.16, ~180 trades/yr, win 44%, maxDD 28R. Edge fading 2023-26; JPY-Asia part = 2021+ JPY trend.
+   - DEPLOY PENDING (he does it): git add/commit/push from laptop (models/orb_brain.txt + models/orb_meta.json + data/research/orb_backtest_stats.json
+     must be copied to the VPS if not in git), VPS git pull + restart FOREX BOT + LIVE API, laptop pnpm dev.
+   - NEXT: let ORB shadow run 2-3 months (judge vs backtest PF ~1.1-1.2, watch GBP-London vs JPY-Asia cells). Meanwhile: his checkmark/cross
+     judgement test on old zones. Later: GBPJPY ticks for an exact ORB test (M5 GBPJPY London 1.08-1.15). Gold still parked.
 !! 8 Oct 2026 - FILL-CANDLE LOOKAHEAD CONFIRMED WITH REAL TICKS (Claude verified ChatGPT audit point 1):
    old management.run_trade_full used the WHOLE fill M5 candle high/low -> price moves BEFORE the limit filled counted as TP / trail best.
    src/research/fillbar_tick_check.py (JForex ticks, real fill tick, tick SL/TP after fill inside the fill candle, then M5) on the 7,485 unique bot trades 2019-2026:
@@ -369,3 +386,56 @@ User explicitly requested recording this experiment for LATER, with precautions 
 - src/api/live_status.py `_zone_from_candle` backup box ab `entry` bhejta hai; src/live/diag_zones.py `config.entry_price` use karta hai.
 - config.py docstring: purane PF numbers pe "lookahead wale" warning.
 - Dashboard ka data VPS bot se aata hai -> VPS pe git pull + FOREX BOT & LIVE API restart ke bina line body pe hi rahegi.
+- 9 Oct ORB "IVB" TEST (video "ORB on steroids"; src/research/orb_ivb_test.py -> data/research/orb_ivb/*.parquet, orb_ivb_all.csv, orb_ivb_best.csv; ticks, $5 + 0.2 pip):
+  ranges ASIA / LON30 / LON60 / NY15 / NY30 / NY60, break = M5 close outside, range tick-volume profile (POC/VAH/VAL),
+  entries BRK (market) / VA / MID / POC (retrace limits), SL VALH / VALC (M5 close beyond VAL) / RNG, TP 1R 2R W0.5-2 STAT(65% excursion) EOD.
+  RESULT: 0 of ~600 combos PASS. Video setup (retrace + VALC + STAT TP): PF 0.56-0.91, worse than plain breakout. Deeper retrace = worse
+  (BRK 0.84 > VA 0.78 > MID 0.74 > POC 0.67 avg) - same as zone entries (shallower better). NY ranges worst (0.57-0.75).
+  Best = ASIA BRK RNG EOD 1.046 test (old tick-break version 1.07). JPY looks good in 2021-26 (1.13-1.22) but was < 1 in 2016-20
+  (0.93-0.99) = JPY trend regime, not reliable. VERDICT: video idea FAIL on FX, ORB still ~break-even. Not in bot.
+- 9 Oct ORB COMPRESSION + FAKEOUT TEST (src/research/orb_nr_test.py -> data/research/orb_nr/*.parquet, orb_nr_all.csv; ticks, ASIA/LON30/LON60,
+  tick break, SL other side; 210 combos). Filters known before range end: NR4/NR7 (yesterday D1 range smallest of 4/7), INSIDE day,
+  TIGHT (range / avg prev 20 <= 30th pct of 2016-20). Pass rule also needs learn PF >= 1.0.
+  FAKEOUT reversal (M5 close back inside -> opposite trade) = BAD everywhere (0.63-0.87). SAR (other side broken) ~0.9-1.05 = nothing.
+  COMPRESSION HELPS BRK: 4 PASS: ASIA EOD TIGHT learn 1.031 / test 1.167 (21-23 1.17, 24-26 1.16, 5/6 yrs, pairs 1.02/1.10/1.41, 204/yr);
+  ASIA 2R NR7 1.138 / 1.114 (114/yr); LON30 2R NR4 1.092 / 1.105 (all pairs > 1, 202/yr); LON30 2R INSIDE 1.110 / 1.118 (118/yr).
+  Caveat: 4 of 210 combos = could partly be luck; TIGHT learn only ~1.0. Wide (not tight) ranges = no edge. NEXT: confirm (neighbour params,
+  other pairs, account sim) before any live use.
+- 9 Oct ORB CONFIRMATION (src/research/orb_confirm.py -> data/research/orb_confirm/m5_*.parquet; M5 approximation, ~+0.03-0.06 PF
+  optimistic vs ticks on EUR/GBP/JPY). Pre-fixed rule: new pairs PF > 1 AND compression beats no-filter.
+  NEW PAIRS AUDUSD + USDCAD = FAIL: base ORB 0.77-0.83, compression filters do NOT help (0.71-0.95, every year negative).
+  NEIGHBOURS on EUR/GBP/JPY = smooth, robust pattern: more compression = better (ASIA none 1.05 -> NR4 1.08 -> NR7 1.13;
+  LON30 none ~0.99 -> NR4 1.14 -> NR7 1.22 at 2R). VERDICT: compression effect real on the 3 majors but does not transfer to
+  AUD/CAD -> not confirmed. NOT in bot. Option discussed: paper-only shadow of ORB-NR on the 3 majors to collect forward data.
+- 9 Oct ORB + ML (src/research/orb_ml_test.py -> data/research/orb_ml_features.parquet, orb_ml.csv; tick ORB rows ASIA/LON30/LON60,
+  LightGBM walk-forward 2019-26 test years, 3 seeds, keep 50%/30% by train-score quantile). Features: nr3-7, inside, w_ratio, range_atr,
+  h4/d1/prevday aligned, prevday_pos, asia_pos, break_delay, weekday, act_15m, spread_r, risk_pips. Top importance: range_atr, risk_pips,
+  act_15m, prevday_pos.
+  ML ALONE ~ no help (0.95-1.08). ML keep 30% + (NR4 or TIGHT), all 3 ranges, TP 2R = BEST: 2021-26 PF 1.22 (seeds 1.16/1.25/1.25),
+  21-23 1.30 / 24-26 1.11, 6/6 yrs, pairs 1.12/1.28/1.31, ~271 trades/yr; 2019-20 also 1.08-1.15 (compression alone 0.96) -> ML adds value.
+  maxDD 36-46R. R/yr fading: 2020-22 +45..80R, 2023-26 ~+6..40R, 2026 -12..+6R. EOD exit version 1.12-1.18.
+  Caveats: compression filter chosen after seeing 2021-26; AUD/CAD did not confirm compression. Candidate for PAPER shadow only.
+- 9 Oct ORB-ML MAX 1 TRADE PER PAIR PER DAY (src/research/orb_check_1perday.py, earliest break wins): 2021-26 PF 1.15-1.26 (3 seeds;
+  all-ranges version 1.16-1.25), ~182 trades/yr, maxDD 24-28R (vs 36-46R), R lower (77-132R vs 124-188R). -> live rule = max 1/pair/day.
+  SESSION x PAIR (2019-26, seed 1): ASIA: EUR 1.08 / GBP 1.08 / JPY 1.25 (JPY = half of all trades); LON30: EUR 1.18 / GBP 1.60 / JPY 0.89;
+  LON60: EUR 0.72 / GBP 1.38 / JPY 1.35. By pair: EUR 1.01, GBP 1.29, JPY 1.18. Plain ORB (no filter): only JPY-ASIA > 1 (1.11).
+  Breaks at 02-05 NY (London open) = most trades and best. "Home session" pattern (JPY in Asia, GBP in London) visible but cells are
+  only ~90-110 trades -> NOT used as a filter yet, watch in shadow.
+- 9 Oct SESSION-WISE ORB (his idea: currency works in its HOME session -> run ORB per session on that currency's pairs).
+  orb_confirm.py now has ranges ASIA/LON30/LON60/NY30 (08:00-08:30, to 12:00)/NY60 + session_table(). M5 approx, 2016-26,
+  compression = NR4 or TIGHT, PF 2R: AUDUSD best in ASIA 0.90 (others 0.72-0.83); USDCAD best in NY30 1.03 (others 0.66-0.82);
+  USDJPY ASIA 1.15 + NY30 1.15 (EOD 1.39); GBPUSD London 1.08-1.15; EURUSD ~1.0 everywhere. -> relative "home session" pattern holds
+  for all 5 pairs, but AUD/CAD absolute still < 1.
+  Downloader: added NZDUSD, EURJPY, GBPJPY, AUDJPY, EURGBP to download_dukascopy.py (Dukascopy blocked from VM + cloud -> he runs it on laptop).
+  NOTE for crosses: commission per lot must be converted (JPY quote / USDJPY, GBP quote * GBPUSD) before the test.
+  !! M5 vs TICK calibration (same intrabar-break ORB, orb_test ticks vs orb_confirm M5): ASIA / LON30 gap small (+0.01-0.04 PF),
+  but NY30 gap HUGE (+0.13-0.32: EUR tick 0.90 vs M5 1.10, JPY 1.02 vs 1.34) - 08:30 news spikes jump past the stop level, M5 assumes
+  fill at the level. -> M5 results for NY ranges are NOT usable (USDCAD NY30 1.03 on M5 means nothing). Screen crosses on ASIA/LON only.
+- 9 Oct SESSION TEST ON NEW PAIRS (M5 data he downloaded: EURJPY GBPJPY AUDJPY EURGBP NZDUSD; build_timeframes run by me;
+  orb_confirm load() now converts commission for crosses: JPY quote / USDJPY D1, GBP quote * GBPUSD D1). Compression (NR4|TIGHT) PF, M5:
+  JPY in ASIA: EURJPY 1.04 (2R) / 1.04 (EOD), AUDJPY 0.98 / 0.94, GBPJPY 0.98 / 0.99 -> NOT confirmed (only USDJPY 1.15 / 1.23).
+  GBP in LONDON: GBPJPY LON30 1.05 / 1.15, LON60 1.07 / 1.08; EURGBP 0.83-0.90 -> mixed. NZDUSD ASIA 0.89 / 0.91 -> no.
+  TIME SPLIT (comp, 16-20 vs 21-26): USDJPY ASIA EOD 0.96 -> 1.49, EURJPY ASIA 0.92 -> 1.16 => JPY-Asia edge = 2021+ JPY trend regime.
+  GBP London stable both periods: GBPUSD LON60 EOD 1.17 / 1.26, GBPJPY LON30 EOD 1.23 / 1.08 (9/11 yrs positive).
+  VERDICT: "home session" theory NOT confirmed broadly; most consistent thing = GBP (vs USD/JPY) breakout at London open.
+  Only new candidate worth ticks: GBPJPY London.

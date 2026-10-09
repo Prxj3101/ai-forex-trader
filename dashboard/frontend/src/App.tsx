@@ -6,6 +6,8 @@ import ChartPanel, { type ChartSettings } from './components/ChartPanel'
 import Header from './components/Header'
 import LivePanel from './components/LivePanel'
 import MLBrain from './components/MLBrain'
+import OrbPanel from './components/OrbPanel'
+import OrbStatsPage from './components/OrbStatsPage'
 import Pipeline from './components/Pipeline'
 import ResearchPanel from './components/ResearchPanel'
 import ScanPanel from './components/ScanPanel'
@@ -18,16 +20,18 @@ import { api, type AgentEvent, type AgentId, type BotConfig, type MLReport, type
 import { useEvents, useNow } from './lib/hooks'
 
 // Do tabs: LIVE (roz dekhna) aur RESEARCH (backtest / history / ML). Last chuna hua tab browser yaad rakhta hai.
-type Tab = 'live' | 'research'
+type Tab = 'live' | 'orb' | 'research'
 const TABS: { id: Tab; label: string; tip: string }[] = [
   { id: 'live', label: 'LIVE', tip: 'What the bot is doing right now on the VPS (broker feed)' },
+  { id: 'orb', label: 'ORB', tip: 'ORB strategy: backtest vs live shadow, by session and pair' },
   { id: 'research', label: 'RESEARCH', tip: 'History chart, ML brain, backtest account and research (downloaded data, not live)' },
 ]
 const TAB_KEY = 'dashboard_tab'
 
 function savedTab(): Tab {
   try {
-    return localStorage.getItem(TAB_KEY) === 'research' ? 'research' : 'live'
+    const t = localStorage.getItem(TAB_KEY)
+    return t === 'research' || t === 'orb' ? t : 'live'
   } catch {
     return 'live'
   }
@@ -200,9 +204,12 @@ export default function App() {
         />
         <Ticker symbols={Object.keys(symbols)} />
 
-        {tab === 'live' ? (
+        {tab === 'orb' ? (
+          <OrbStatsPage connected={connected} />
+        ) : tab === 'live' ? (
           <>
             <LivePanel connected={connected} />
+            <OrbPanel connected={connected} />
             <div className="grid gap-2.5 xl:grid-cols-[300px_minmax(0,1fr)]">
               <SessionRadar />
             </div>
