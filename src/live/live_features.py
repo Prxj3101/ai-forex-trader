@@ -119,7 +119,7 @@ def candidates(symbol: str, m5: pd.DataFrame, bar_time: pd.Timestamp,
     rows = []
     for r in z.itertuples(index=False):
         bull = r.direction == "bull"
-        entry = r.body_top if bull else r.body_bottom
+        entry = config.entry_price(r, bull)
         buf = SL_BUFFER_ATR * r.atr
         sl = (r.bottom - buf) if bull else (r.top + buf)
         risk = abs(entry - sl)

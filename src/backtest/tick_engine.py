@@ -64,11 +64,16 @@ def find_fill(sym, bull, entry, search_from_ms, search_to_ms):
 
 
 def run_exit(sym, bull, entry, sl, fill_ms, policy: str, tp_r: float | None = None):
-    """policy 'tp1' / 'tp2' (fixed 1:1 / 1:2) or 'trail' (trail 1R after 1R). Returns dict(r, reason, exit_ms, best_r)."""
+    """policy 'tp1' / 'tp2' (fixed 1:1 / 1:2), 'tp' (fixed tp_r) or 'trail' (trail 1R after 1R).
+    Returns dict(r, reason, exit_ms, best_r)."""
     z = ticks(sym, fill_ms, fill_ms + HOLD_MS)
     if z is None:
         return dict(r=np.nan, reason="missing", exit_ms=None, best_r=np.nan)
-    t, a, b = z
+    return exit_arrays(*z, bull, entry, sl, policy, tp_r)
+
+
+def exit_arrays(t, a, b, bull, entry, sl, policy: str, tp_r: float | None = None):
+    """Same as run_exit but on tick arrays that START at the fill tick (already cut to the 3-day hold)."""
     risk = abs(entry - sl)
     px = b if bull else a                                   # exit side
     fav = (px - entry) / risk if bull else (entry - px) / risk

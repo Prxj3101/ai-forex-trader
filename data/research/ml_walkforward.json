@@ -2,46 +2,46 @@
   "summary": [
     {
       "keep": 1.0,
-      "trades": 57691,
-      "win_pct": 39.0,
-      "pf_trail": 0.59,
-      "pf_1to1": 0.604,
-      "pf_1to2": 0.681,
-      "total_r": -16155.6,
-      "avg_r": -0.28,
+      "trades": 59634,
+      "win_pct": 41.5,
+      "pf_trail": 0.681,
+      "pf_1to1": 0.693,
+      "pf_1to2": 0.757,
+      "total_r": -11908.4,
+      "avg_r": -0.2,
       "losing_years": 8
     },
     {
       "keep": 0.7,
-      "trades": 38213,
-      "win_pct": 42.7,
-      "pf_trail": 0.725,
-      "pf_1to1": 0.747,
-      "pf_1to2": 0.804,
-      "total_r": -6286.3,
-      "avg_r": -0.165,
+      "trades": 39552,
+      "win_pct": 44.0,
+      "pf_trail": 0.777,
+      "pf_1to1": 0.793,
+      "pf_1to2": 0.84,
+      "total_r": -5076.3,
+      "avg_r": -0.128,
       "losing_years": 8
     },
     {
       "keep": 0.5,
-      "trades": 26579,
-      "win_pct": 44.1,
-      "pf_trail": 0.769,
-      "pf_1to1": 0.793,
-      "pf_1to2": 0.845,
-      "total_r": -3539.8,
-      "avg_r": -0.133,
+      "trades": 27224,
+      "win_pct": 45.0,
+      "pf_trail": 0.805,
+      "pf_1to1": 0.829,
+      "pf_1to2": 0.875,
+      "total_r": -2978.7,
+      "avg_r": -0.109,
       "losing_years": 8
     },
     {
       "keep": 0.3,
-      "trades": 15123,
-      "win_pct": 45.5,
-      "pf_trail": 0.796,
-      "pf_1to1": 0.838,
-      "pf_1to2": 0.881,
-      "total_r": -1721.4,
-      "avg_r": -0.114,
+      "trades": 15329,
+      "win_pct": 45.9,
+      "pf_trail": 0.827,
+      "pf_1to1": 0.859,
+      "pf_1to2": 0.891,
+      "total_r": -1459.8,
+      "avg_r": -0.095,
       "losing_years": 8
     }
   ],
@@ -49,445 +49,445 @@
     {
       "keep": 1.0,
       "year": 2019,
-      "trades": 7539,
-      "pf": 0.604,
-      "total_r": -2033.7
+      "trades": 7759,
+      "pf": 0.693,
+      "total_r": -1466.3
     },
     {
       "keep": 1.0,
       "year": 2020,
-      "trades": 7399,
-      "pf": 0.555,
-      "total_r": -2235.1
+      "trades": 7674,
+      "pf": 0.659,
+      "total_r": -1631.7
     },
     {
       "keep": 1.0,
       "year": 2021,
-      "trades": 7530,
-      "pf": 0.573,
-      "total_r": -2195.5
+      "trades": 7758,
+      "pf": 0.67,
+      "total_r": -1600.1
     },
     {
       "keep": 1.0,
       "year": 2022,
-      "trades": 7257,
-      "pf": 0.647,
-      "total_r": -1666.9
+      "trades": 7625,
+      "pf": 0.773,
+      "total_r": -1029.4
     },
     {
       "keep": 1.0,
       "year": 2023,
-      "trades": 7573,
-      "pf": 0.595,
-      "total_r": -2065.7
+      "trades": 7805,
+      "pf": 0.665,
+      "total_r": -1648.3
     },
     {
       "keep": 1.0,
       "year": 2024,
-      "trades": 7413,
-      "pf": 0.555,
-      "total_r": -2370.5
+      "trades": 7564,
+      "pf": 0.637,
+      "total_r": -1816.5
     },
     {
       "keep": 1.0,
       "year": 2025,
-      "trades": 7394,
-      "pf": 0.628,
-      "total_r": -1857.2
-    },
-    {
-      "keep": 1.0,
-      "year": 2026,
-      "trades": 5586,
-      "pf": 0.562,
-      "total_r": -1731.0
-    },
-    {
-      "keep": 0.7,
-      "year": 2019,
-      "trades": 3994,
-      "pf": 0.735,
-      "total_r": -628.1
-    },
-    {
-      "keep": 0.7,
-      "year": 2020,
-      "trades": 5066,
-      "pf": 0.651,
-      "total_r": -1080.1
-    },
-    {
-      "keep": 0.7,
-      "year": 2021,
-      "trades": 4878,
+      "trades": 7668,
       "pf": 0.712,
-      "total_r": -832.6
+      "total_r": -1373.5
     },
     {
-      "keep": 0.7,
-      "year": 2022,
-      "trades": 5427,
-      "pf": 0.744,
-      "total_r": -814.6
-    },
-    {
-      "keep": 0.7,
-      "year": 2023,
-      "trades": 5309,
-      "pf": 0.72,
-      "total_r": -898.4
-    },
-    {
-      "keep": 0.7,
-      "year": 2024,
-      "trades": 4713,
-      "pf": 0.709,
-      "total_r": -832.4
-    },
-    {
-      "keep": 0.7,
-      "year": 2025,
-      "trades": 5366,
-      "pf": 0.788,
-      "total_r": -670.0
-    },
-    {
-      "keep": 0.7,
+      "keep": 1.0,
       "year": 2026,
-      "trades": 3460,
-      "pf": 0.744,
-      "total_r": -530.2
+      "trades": 5781,
+      "pf": 0.643,
+      "total_r": -1342.6
     },
     {
-      "keep": 0.5,
+      "keep": 0.7,
       "year": 2019,
-      "trades": 2434,
-      "pf": 0.796,
-      "total_r": -282.8
+      "trades": 4132,
+      "pf": 0.783,
+      "total_r": -508.9
     },
     {
-      "keep": 0.5,
+      "keep": 0.7,
       "year": 2020,
-      "trades": 3644,
-      "pf": 0.691,
-      "total_r": -662.8
+      "trades": 5247,
+      "pf": 0.736,
+      "total_r": -806.8
     },
     {
-      "keep": 0.5,
+      "keep": 0.7,
       "year": 2021,
-      "trades": 3317,
-      "pf": 0.754,
-      "total_r": -467.8
+      "trades": 4781,
+      "pf": 0.766,
+      "total_r": -645.1
     },
     {
-      "keep": 0.5,
+      "keep": 0.7,
       "year": 2022,
-      "trades": 3993,
-      "pf": 0.789,
-      "total_r": -480.1
-    },
-    {
-      "keep": 0.5,
-      "year": 2023,
-      "trades": 3769,
-      "pf": 0.747,
-      "total_r": -554.9
-    },
-    {
-      "keep": 0.5,
-      "year": 2024,
-      "trades": 3224,
-      "pf": 0.743,
-      "total_r": -488.6
-    },
-    {
-      "keep": 0.5,
-      "year": 2025,
-      "trades": 3851,
-      "pf": 0.826,
-      "total_r": -382.4
-    },
-    {
-      "keep": 0.5,
-      "year": 2026,
-      "trades": 2347,
-      "pf": 0.834,
-      "total_r": -220.6
-    },
-    {
-      "keep": 0.3,
-      "year": 2019,
-      "trades": 1144,
-      "pf": 0.821,
-      "total_r": -110.9
-    },
-    {
-      "keep": 0.3,
-      "year": 2020,
-      "trades": 2209,
-      "pf": 0.709,
-      "total_r": -373.0
-    },
-    {
-      "keep": 0.3,
-      "year": 2021,
-      "trades": 1814,
-      "pf": 0.772,
-      "total_r": -228.8
-    },
-    {
-      "keep": 0.3,
-      "year": 2022,
-      "trades": 2483,
+      "trades": 5875,
       "pf": 0.842,
-      "total_r": -215.4
+      "total_r": -518.4
+    },
+    {
+      "keep": 0.7,
+      "year": 2023,
+      "trades": 5562,
+      "pf": 0.754,
+      "total_r": -797.6
+    },
+    {
+      "keep": 0.7,
+      "year": 2024,
+      "trades": 4756,
+      "pf": 0.74,
+      "total_r": -738.3
+    },
+    {
+      "keep": 0.7,
+      "year": 2025,
+      "trades": 5642,
+      "pf": 0.8,
+      "total_r": -643.5
+    },
+    {
+      "keep": 0.7,
+      "year": 2026,
+      "trades": 3557,
+      "pf": 0.798,
+      "total_r": -417.6
+    },
+    {
+      "keep": 0.5,
+      "year": 2019,
+      "trades": 2305,
+      "pf": 0.829,
+      "total_r": -215.6
+    },
+    {
+      "keep": 0.5,
+      "year": 2020,
+      "trades": 3643,
+      "pf": 0.739,
+      "total_r": -549.6
+    },
+    {
+      "keep": 0.5,
+      "year": 2021,
+      "trades": 3184,
+      "pf": 0.795,
+      "total_r": -362.5
+    },
+    {
+      "keep": 0.5,
+      "year": 2022,
+      "trades": 4453,
+      "pf": 0.864,
+      "total_r": -330.7
+    },
+    {
+      "keep": 0.5,
+      "year": 2023,
+      "trades": 4012,
+      "pf": 0.752,
+      "total_r": -576.3
+    },
+    {
+      "keep": 0.5,
+      "year": 2024,
+      "trades": 3206,
+      "pf": 0.776,
+      "total_r": -417.0
+    },
+    {
+      "keep": 0.5,
+      "year": 2025,
+      "trades": 4066,
+      "pf": 0.841,
+      "total_r": -358.9
+    },
+    {
+      "keep": 0.5,
+      "year": 2026,
+      "trades": 2355,
+      "pf": 0.87,
+      "total_r": -168.2
+    },
+    {
+      "keep": 0.3,
+      "year": 2019,
+      "trades": 1069,
+      "pf": 0.874,
+      "total_r": -71.0
+    },
+    {
+      "keep": 0.3,
+      "year": 2020,
+      "trades": 2163,
+      "pf": 0.759,
+      "total_r": -294.3
+    },
+    {
+      "keep": 0.3,
+      "year": 2021,
+      "trades": 1761,
+      "pf": 0.829,
+      "total_r": -162.9
+    },
+    {
+      "keep": 0.3,
+      "year": 2022,
+      "trades": 2700,
+      "pf": 0.896,
+      "total_r": -148.2
     },
     {
       "keep": 0.3,
       "year": 2023,
-      "trades": 2155,
-      "pf": 0.763,
-      "total_r": -288.2
+      "trades": 2245,
+      "pf": 0.745,
+      "total_r": -327.7
     },
     {
       "keep": 0.3,
       "year": 2024,
-      "trades": 1810,
-      "pf": 0.781,
-      "total_r": -226.3
+      "trades": 1786,
+      "pf": 0.851,
+      "total_r": -148.2
     },
     {
       "keep": 0.3,
       "year": 2025,
-      "trades": 2207,
-      "pf": 0.855,
-      "total_r": -177.4
+      "trades": 2322,
+      "pf": 0.844,
+      "total_r": -198.2
     },
     {
       "keep": 0.3,
       "year": 2026,
-      "trades": 1301,
-      "pf": 0.859,
-      "total_r": -101.3
+      "trades": 1283,
+      "pf": 0.846,
+      "total_r": -109.4
     }
   ],
   "by_symbol": [
     {
       "keep": 1.0,
       "symbol": "EURUSD",
-      "trades": 25447,
-      "pf": 0.614,
-      "total_r": -6557.8
+      "trades": 26310,
+      "pf": 0.697,
+      "total_r": -4902.9
     },
     {
       "keep": 1.0,
       "symbol": "GBPUSD",
-      "trades": 8201,
-      "pf": 0.603,
-      "total_r": -2133.0
+      "trades": 8528,
+      "pf": 0.695,
+      "total_r": -1587.2
     },
     {
       "keep": 1.0,
       "symbol": "USDJPY",
-      "trades": 24043,
-      "pf": 0.562,
-      "total_r": -7464.8
+      "trades": 24796,
+      "pf": 0.662,
+      "total_r": -5418.4
     },
     {
       "keep": 0.7,
       "symbol": "EURUSD",
-      "trades": 16898,
-      "pf": 0.751,
-      "total_r": -2466.6
+      "trades": 17332,
+      "pf": 0.791,
+      "total_r": -2062.9
     },
     {
       "keep": 0.7,
       "symbol": "GBPUSD",
-      "trades": 5562,
-      "pf": 0.719,
-      "total_r": -917.6
+      "trades": 5693,
+      "pf": 0.77,
+      "total_r": -741.3
     },
     {
       "keep": 0.7,
       "symbol": "USDJPY",
-      "trades": 15753,
-      "pf": 0.7,
-      "total_r": -2902.1
+      "trades": 16527,
+      "pf": 0.766,
+      "total_r": -2272.1
     },
     {
       "keep": 0.5,
       "symbol": "EURUSD",
-      "trades": 11699,
-      "pf": 0.787,
-      "total_r": -1422.2
+      "trades": 11889,
+      "pf": 0.818,
+      "total_r": -1196.8
     },
     {
       "keep": 0.5,
       "symbol": "GBPUSD",
-      "trades": 4140,
-      "pf": 0.744,
-      "total_r": -603.7
+      "trades": 4308,
+      "pf": 0.794,
+      "total_r": -489.9
     },
     {
       "keep": 0.5,
       "symbol": "USDJPY",
-      "trades": 10740,
-      "pf": 0.76,
-      "total_r": -1514.0
+      "trades": 11027,
+      "pf": 0.796,
+      "total_r": -1292.0
     },
     {
       "keep": 0.3,
       "symbol": "EURUSD",
-      "trades": 6551,
-      "pf": 0.807,
-      "total_r": -698.9
+      "trades": 6702,
+      "pf": 0.845,
+      "total_r": -561.7
     },
     {
       "keep": 0.3,
       "symbol": "GBPUSD",
-      "trades": 2632,
-      "pf": 0.8,
-      "total_r": -291.2
+      "trades": 2616,
+      "pf": 0.794,
+      "total_r": -293.0
     },
     {
       "keep": 0.3,
       "symbol": "USDJPY",
-      "trades": 5940,
-      "pf": 0.783,
-      "total_r": -731.2
+      "trades": 6011,
+      "pf": 0.82,
+      "total_r": -605.1
     }
   ],
   "score_buckets": [
     {
       "bucket": "lowest 20%",
-      "trades": 11539,
-      "avg_score": 0.278,
-      "real_win_pct": 28.7,
-      "pf": 0.34
+      "trades": 11927,
+      "avg_score": 0.33,
+      "real_win_pct": 34.5,
+      "pf": 0.473
     },
     {
       "bucket": "20-40%",
-      "trades": 11538,
-      "avg_score": 0.362,
-      "real_win_pct": 36.9,
-      "pf": 0.555
+      "trades": 11927,
+      "avg_score": 0.391,
+      "real_win_pct": 39.7,
+      "pf": 0.639
     },
     {
       "bucket": "40-60%",
-      "trades": 11538,
-      "avg_score": 0.4,
-      "real_win_pct": 40.4,
-      "pf": 0.658
+      "trades": 11926,
+      "avg_score": 0.42,
+      "real_win_pct": 42.8,
+      "pf": 0.754
     },
     {
       "bucket": "60-80%",
-      "trades": 11538,
-      "avg_score": 0.431,
-      "real_win_pct": 43.2,
-      "pf": 0.759
+      "trades": 11927,
+      "avg_score": 0.445,
+      "real_win_pct": 44.2,
+      "pf": 0.788
     },
     {
       "bucket": "top 20%",
-      "trades": 11538,
-      "avg_score": 0.475,
-      "real_win_pct": 45.7,
-      "pf": 0.801
+      "trades": 11927,
+      "avg_score": 0.483,
+      "real_win_pct": 46.2,
+      "pf": 0.837
     }
   ],
   "exits": [
     {
       "exit": "trail",
       "label": "Always trailing",
-      "trades": 4180,
-      "pf": 0.807,
-      "total_r": -448.5,
-      "max_dd_r": 467.0,
-      "losing_years": 8
+      "trades": 3876,
+      "pf": 0.819,
+      "total_r": -379.6,
+      "max_dd_r": 391.3,
+      "losing_years": 7
     },
     {
       "exit": "tp1",
       "label": "Always 1:1",
-      "trades": 4180,
-      "pf": 0.854,
-      "total_r": -337.5,
-      "max_dd_r": 345.8,
-      "losing_years": 8
+      "trades": 3876,
+      "pf": 0.896,
+      "total_r": -216.3,
+      "max_dd_r": 225.9,
+      "losing_years": 7
     },
     {
       "exit": "rule",
       "label": "Smart rule (slow approach = 1:1)",
-      "trades": 4180,
-      "pf": 0.828,
-      "total_r": -398.1,
-      "max_dd_r": 414.8,
-      "losing_years": 8
+      "trades": 3876,
+      "pf": 0.837,
+      "total_r": -341.3,
+      "max_dd_r": 349.4,
+      "losing_years": 7
     },
     {
       "exit": "ml",
       "label": "ML exit model",
-      "trades": 4180,
-      "pf": 0.855,
-      "total_r": -334.7,
-      "max_dd_r": 345.6,
-      "losing_years": 8
+      "trades": 3876,
+      "pf": 0.889,
+      "total_r": -231.1,
+      "max_dd_r": 248.0,
+      "losing_years": 6
     }
   ],
   "bot": {
     "label": "M15 first touch + ML top 30% + value area filter + activity filter + exit brain",
-    "trades": 4180,
-    "win_pct": 49.3,
-    "pf": 0.855,
-    "total_r": -334.7,
-    "avg_r": -0.08,
-    "max_dd_r": 345.6,
-    "losing_years": 8,
-    "trail_share_pct": 21.4,
+    "trades": 3876,
+    "win_pct": 49.5,
+    "pf": 0.889,
+    "total_r": -231.1,
+    "avg_r": -0.06,
+    "max_dd_r": 248.0,
+    "losing_years": 6,
+    "trail_share_pct": 22.2,
     "by_year": {
-      "2019": -14.8,
-      "2020": -68.7,
-      "2021": -54.5,
-      "2022": -16.8,
-      "2023": -63.6,
-      "2024": -70.5,
-      "2025": -35.1,
-      "2026": -10.7
+      "2019": 2.8,
+      "2020": -70.0,
+      "2021": -42.5,
+      "2022": -17.4,
+      "2023": -69.6,
+      "2024": 4.7,
+      "2025": -17.8,
+      "2026": -21.4
     },
     "by_symbol": {
       "EURUSD": {
-        "trades": 1869,
-        "pf": 0.833,
-        "total_r": -174.4
+        "trades": 1729,
+        "pf": 0.879,
+        "total_r": -112.8
       },
       "GBPUSD": {
-        "trades": 780,
-        "pf": 0.929,
-        "total_r": -29.4
+        "trades": 733,
+        "pf": 0.805,
+        "total_r": -79.0
       },
       "USDJPY": {
-        "trades": 1531,
-        "pf": 0.847,
-        "total_r": -131.0
+        "trades": 1414,
+        "pf": 0.947,
+        "total_r": -39.3
       }
     }
   },
   "va_filter": {
     "on": true,
     "max_pos": 0.81,
-    "removed": 944,
-    "pf_without": 0.83,
-    "trades_without": 6893
+    "removed": 1307,
+    "pf_without": 0.844,
+    "trades_without": 6685
   },
   "act_filter": {
     "on": true,
     "min_act": 0.9,
-    "removed": 1769,
-    "pf_without": 0.83,
-    "trades_without": 5949
+    "removed": 1502,
+    "pf_without": 0.869,
+    "trades_without": 5378
   },
   "final_thresholds": {
-    "0.7": 0.37034734805613073,
-    "0.5": 0.4064592207850728,
-    "0.3": 0.43449248668584745
+    "0.7": 0.3991885734965139,
+    "0.5": 0.42526466851573047,
+    "0.3": 0.44788579716564225
   },
   "symbols": [
     "EURUSD",
@@ -543,57 +543,57 @@
     "session_created"
   ],
   "importance": {
-    "cost_r": 21.1,
-    "spread_r": 13.8,
-    "sl_pips": 5.7,
-    "range_pos_d1": 3.8,
-    "risk_atr": 3.5,
-    "bars_since_created": 3.4,
-    "approach_1h_atr": 3.2,
-    "spread_atr": 3.1,
-    "approach_3h_atr": 2.8,
-    "impulse_body_pct": 2.8,
-    "range_pos_h4": 2.7,
-    "fill_hour_ny": 2.6,
-    "followthrough_atr": 2.5,
-    "disp_d1": 2.5,
-    "break_margin_atr": 2.4,
-    "zone_height_atr": 2.3,
-    "disp_h1": 1.9,
-    "disp_h4": 1.8,
-    "approach_push": 1.7,
-    "pullback_atr": 1.7,
-    "disp_atr": 1.6,
-    "fill_weekday": 1.3,
-    "session_fill": 1.2,
-    "session_created": 1.2,
-    "touch_number": 1.1,
+    "cost_r": 13.7,
+    "spread_r": 11.0,
+    "range_pos_d1": 4.5,
+    "bars_since_created": 4.5,
+    "impulse_body_pct": 4.3,
+    "approach_1h_atr": 4.2,
+    "range_pos_h4": 4.2,
+    "spread_atr": 3.9,
+    "approach_3h_atr": 3.9,
+    "sl_pips": 3.5,
+    "disp_d1": 3.2,
+    "break_margin_atr": 3.2,
+    "zone_height_atr": 3.1,
+    "fill_hour_ny": 2.9,
+    "pullback_atr": 2.8,
+    "approach_push": 2.5,
+    "disp_h1": 2.4,
+    "followthrough_atr": 2.3,
+    "disp_atr": 2.2,
+    "disp_h4": 2.0,
+    "fill_weekday": 1.9,
+    "hour_ny": 1.7,
+    "session_fill": 1.3,
+    "touch_number": 1.3,
     "trend_tf_aligned": 1.0,
-    "hour_ny": 1.0,
-    "symbol": 0.8,
-    "killzone": 0.8,
-    "trend_h1_aligned": 0.7,
-    "weekday": 0.6,
+    "weekday": 1.0,
+    "trend_h1_aligned": 1.0,
+    "session_created": 0.9,
+    "symbol": 0.6,
     "h1_confluence": 0.6,
+    "risk_atr": 0.5,
+    "killzone": 0.5,
     "direction": 0.5,
-    "h1_flow_aligned": 0.4,
+    "impulse_candles": 0.4,
+    "pd_aligned_h4": 0.4,
     "bias_d1_aligned": 0.3,
-    "impulse_candles": 0.3,
-    "sweep_prev_day": 0.2,
-    "bias_h4_aligned": 0.2,
-    "bars_ob_to_bos": 0.2,
-    "pd_aligned_h4": 0.2,
-    "sweep_asia": 0.1,
-    "pd_aligned_d1": 0.1,
+    "bias_h4_aligned": 0.3,
+    "bars_ob_to_bos": 0.3,
+    "sweep_prev_day": 0.3,
+    "pd_aligned_d1": 0.3,
+    "h1_flow_aligned": 0.3,
+    "sweep_asia": 0.2,
     "sweep_6h": 0.1,
-    "sweep_24h": 0.1,
     "has_fvg": 0.1,
-    "zone_tf": 0.0
+    "zone_tf": 0.1,
+    "sweep_24h": 0.0
   },
-  "n_trades": 80567,
+  "n_trades": 83217,
   "commission": 5.0,
   "slippage_pips": 0.2,
   "results_are": "net of costs",
   "first_test_year": 2019,
-  "trained_at": "2026-10-08T16:06:00.524930+00:00"
+  "trained_at": "2026-10-09T08:33:35.605725+00:00"
 }

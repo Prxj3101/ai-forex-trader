@@ -37,6 +37,19 @@ def disp_for(symbol: str) -> float:
 #   r24_va_pos > VA_MAX_POS -> skip
 # 0.81 = 2019 se PEHLE ke trades ka 80th percentile (test saalon se tune NAHI kiya).
 # Backtest (2019-2026): bot PF 1.228 -> 1.260, max DD 8.9% -> 7.3%. Demo mein dobara verify karna hai.
+# ENTRY LEVEL inside the zone (9 Oct 2026, entry_test.py on ticks): "wick" = zone edge (wick high of the demand
+# candle / wick low of the supply candle) was better than "body" (body edge) in every period and pair
+# (whole bot 2019-26 net PF 0.86 -> 0.91). SL stays far wick + 0.1 ATR.
+ENTRY_LEVEL = "wick"
+
+
+def entry_price(zone, bull: bool) -> float:
+    """Limit price for a zone row (needs top/bottom/body_top/body_bottom)."""
+    if ENTRY_LEVEL == "wick":
+        return float(zone.top if bull else zone.bottom)
+    return float(zone.body_top if bull else zone.body_bottom)
+
+
 VA_FILTER = True
 VA_MAX_POS = 0.81
 

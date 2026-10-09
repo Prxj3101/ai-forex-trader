@@ -130,7 +130,7 @@ def zone_context(z: pd.DataFrame, df: pd.DataFrame, h4: pd.DataFrame, d1: pd.Dat
         bull = r.direction == "bull"
         ob = int(idx.get_loc(r.zone_candle_time))
         i = int(idx.get_loc(r.bos_time))
-        entry = r.body_top if bull else r.body_bottom
+        entry = config.entry_price(r, bull)
 
         # --- Liquidity sweep: zone ke aas-paas (ob-3 .. BOS) price ne purana low/high toda? ---
         w0 = max(ob - 3, 0)
@@ -250,7 +250,7 @@ def simulate_touches(z: pd.DataFrame, m5: pd.DataFrame, entry_mode: str = "body"
 
     for zi, r in enumerate(z.itertuples(index=False)):
         bull = r.direction == "bull"
-        entry = r.body_top if bull else r.body_bottom
+        entry = config.entry_price(r, bull)
         if entry_mode == "body_spread" and bull:
             entry += r.spread_atr * r.atr      # spread at zone creation (pehle se pata hai, no lookahead)
         buf = SL_BUFFER_ATR * r.atr
@@ -348,7 +348,7 @@ def build(symbol: str, swing_n: int | None = None, min_disp: float | None = None
         say("zone", f"{symbol} {tf}: {len(t):,} trades simulated", 100)
 
     ds = pd.concat(parts, ignore_index=True).sort_values("fill_time").reset_index(drop=True)
-    ds["symbol"], ds["swing_n"], ds["min_disp"], ds["entry_mode"] = symbol, swing_n, min_disp, entry_mode
+    ds["symbol"], ds["swing_n"], ds["min_disp"], ds["entry_mode"] = symbol, swing_n, min_disp, f"{config.ENTRY_LEVEL}:{entry_mode}"
     ds["win"] = ds["r_trail"] > 0
     # Volume profile features (value area filter ke liye; src/features/volume_profile.py)
     ds = add_vp_features(ds, symbol, m5)
