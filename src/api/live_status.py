@@ -170,7 +170,58 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
                 have.add(fts)
     except Exception:  # noqa: BLE001
         pass
+    out["open"] = [dict(t, kind="zone") for t in out["open"]] + _orb_open_rows(live, symbol)
+    out["trades"] = [dict(t, kind="zone") for t in out["trades"]] + _orb_closed_rows(live, symbol)
     out["orb"] = chart_orb(live, symbol)                 # ORB dabbe (src/live/orb.py)
+    return out
+
+
+ORB_COMMISSION_PER_LOT = 5.0                           # src/live/orb.py: $5 / lot round trip
+
+
+def _orb_open_rows(live: Path, symbol: str | None = None) -> list[dict]:
+    """Khule ORB trades (orb_state.json) - wahi shape jo zone trades ka (chart lines + right column + live P&L)."""
+    f = live / "orb_state.json"
+    if not f.exists():
+        return []
+    try:
+        st = json.loads(f.read_text())
+    except Exception:  # noqa: BLE001 - file likhi ja rahi ho
+        return []
+    rows = []
+    for t in st.get("open", []):
+        if symbol and t.get("symbol") != symbol:
+            continue
+        pip = 0.01 if str(t.get("symbol", "")).endswith("JPY") else 0.0001
+        ft = to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None
+        entry, sl = float(t["entry"]), float(t["sl"])
+        rows.append({"kind": "orb", "range": t.get("range"), "symbol": t.get("symbol"), "direction": t.get("direction"),
+                     "entry": clean(entry), "sl": clean(sl), "tp": clean(t.get("tp")), "lots": clean(t.get("lots")),
+                     "exit": "tp2", "sl_pips": round(abs(entry - sl) / pip, 1), "score": clean(t.get("score")),
+                     "commission_usd": round(float(t.get("lots") or 0) * ORB_COMMISSION_PER_LOT, 2),
+                     "stop_now": clean(sl), "best_r": clean(t.get("best_r")), "r_now": clean(t.get("r_now")),
+                     "risk_usd": clean(t.get("risk_usd")), "filled_at": ft, "fill_time": ft})
+    return rows
+
+
+def _orb_closed_rows(live: Path, symbol: str, n: int = 30) -> list[dict]:
+    """Band ORB trades (orb_trades.csv) for the chart: entry / SL / TP lines + exit marker."""
+    f = live / "orb_trades.csv"
+    if not f.exists():
+        return []
+    try:
+        c = pd.read_csv(f)
+    except Exception:  # noqa: BLE001
+        return []
+    c = c[c["symbol"] == symbol].tail(n)
+    out = []
+    for r in c.itertuples(index=False):
+        risk = abs(float(r.entry) - float(r.sl))
+        sign = 1 if r.direction == "bull" else -1
+        out.append({"kind": "orb", "range": r.range, "direction": r.direction, "entry": clean(r.entry), "sl": clean(r.sl),
+                    "tp": clean(r.tp), "exit": "tp2", "r": clean(r.r), "exit_reason": r.exit_reason, "pnl": clean(r.pnl),
+                    "exit_px": clean(float(r.entry) + sign * float(r.r) * risk), "lots": clean(r.lots),
+                    "fill_ts": to_unix(pd.Timestamp(r.fill_time)), "exit_ts": to_unix(pd.Timestamp(r.exit_time))})
     return out
 
 
@@ -210,6 +261,7 @@ def build_ticks(live: Path) -> dict:
                            for t in st.get("open_trades", [])]
         except Exception:  # noqa: BLE001
             pass
+    out["open"] = [dict(t, kind="zone") for t in out["open"]] + _orb_open_rows(live)   # ORB trades bhi (alag account)
     return out
 
 

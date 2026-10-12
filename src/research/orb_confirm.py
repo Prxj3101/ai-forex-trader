@@ -19,7 +19,8 @@ sys.path.insert(0, str(ROOT))
 OUT = ROOT / "data/research/orb_confirm"
 NY = "America/New_York"
 PIP = {"EURUSD": 1e-4, "GBPUSD": 1e-4, "USDJPY": 1e-2, "AUDUSD": 1e-4, "USDCAD": 1e-4, "NZDUSD": 1e-4,
-       "EURJPY": 1e-2, "GBPJPY": 1e-2, "AUDJPY": 1e-2, "EURGBP": 1e-4}
+       "EURJPY": 1e-2, "GBPJPY": 1e-2, "AUDJPY": 1e-2, "EURGBP": 1e-4,
+       "XAUUSD": 0.1}                                     # gold: "pip" = $0.10; 1 lot = 100 oz
 RANGES = {"ASIA": ((19, 0), (2, 0), (11, 0)), "LON30": ((3, 0), (3, 30), (11, 0)), "LON60": ((3, 0), (4, 0), (11, 0)),
           "NY30": ((8, 0), (8, 30), (12, 0)), "NY60": ((8, 0), (9, 0), (12, 0))}
 TPS = {"1R": 1.0, "1.5R": 1.5, "2R": 2.0, "2.5R": 2.5, "3R": 3.0, "EOD": None}
@@ -105,9 +106,11 @@ def load():
             rate = r.set_index(pd.to_datetime(r.trade_date)).close.sort_index()
             px = rate.reindex(d.loc[m, "day_ts"], method="ffill").to_numpy()
             usd[m] = (1.0 / px) if inv else px
-    per_lot = d.risk.to_numpy() * 1e5 * usd.to_numpy()
+    gold = (d.symbol == "XAUUSD").to_numpy()
+    per_lot = np.where(gold, d.risk.to_numpy() * 100.0, d.risk.to_numpy() * 1e5 * usd.to_numpy())   # $ per 1R per lot
+    comm = np.where(gold, 7.0, 5.0)                       # gold raw-spread commission ~$7/lot round trip (conservative)
     for tn in TPS:
-        d[f"n_{tn}"] = d[f"r_{tn}"] - 5.0 / per_lot - np.where(d[f"why_{tn}"] == "sl", 0.2 * pip / d.risk, 0)
+        d[f"n_{tn}"] = d[f"r_{tn}"] - comm / per_lot - np.where(d[f"why_{tn}"] == "sl", 0.2 * pip / d.risk, 0)
     d["year"] = pd.to_datetime(d.day).dt.year
     return d
 

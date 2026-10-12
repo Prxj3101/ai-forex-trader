@@ -335,7 +335,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
   const c = data.closed ?? { count: 0, wins: 0, win_pct: null, pnl: 0, r_sum: 0, pf: null, commission: 0 }
   const ddColor = a.dd_pct >= a.kill_dd_pct ? 'var(--red)' : a.dd_pct >= a.brake_dd_pct ? 'var(--amber)' : 'var(--text)'
   // khule trades: ticks (har ~1 s) se -> naya trade seconds mein dikhe; ticks na hon toh 15 s wala data
-  const open: LiveTickTrade[] = ticks?.updated ? ticks.open : (data.open_trades ?? [])
+  const open: LiveTickTrade[] = (ticks?.updated ? ticks.open : (data.open_trades ?? [])).filter((t) => t.kind !== 'orb')   // ORB = alag account (ORB panel)
   const commissionPerLot = a.commission_per_lot ?? 5
   const openCommission = a.commission_open ?? open.reduce((sum, t) => sum + (t.commission_usd ?? t.lots * commissionPerLot), 0)
   const closedCommission = a.commission_closed ?? c.commission ?? (data.trades ?? []).reduce((sum, t) => sum + (t.commission_usd ?? t.lots * commissionPerLot), 0)

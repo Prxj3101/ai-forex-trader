@@ -525,6 +525,42 @@ def orb_backtest():
     return out
 
 
+@app.get("/api/orb/research/report")
+def orb_research_report(pairs: str = "EURUSD,GBPUSD,USDJPY", ranges: str = "ASIA,LON30,LON60", comp: str = "nr4_or_tight",
+                        ml: bool = True, tp: str = "2R", one_per_day: bool = True, direction: str = "all",
+                        y0: int = 2016, y1: int = 2026):
+    """Research -> ORB filters: PF / trades / equity for any combination (downloaded data, laptop only)."""
+    from src.api import orb_research as orr
+    try:
+        return orr.report([p for p in pairs.split(",") if p], [r for r in ranges.split(",") if r], comp, ml, tp,
+                          one_per_day, direction, y0, y1)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.get("/api/orb/research/chart")
+def orb_research_chart(symbol: str, start: str, end: str):
+    """Research -> ORB history chart: ranges + trades of one pair in a date window."""
+    from src.api import orb_research as orr
+    if not symbol.isalpha() or len(symbol) > 10:
+        raise HTTPException(400, "bad symbol")
+    s, e = int(pd.Timestamp(start).timestamp()), int(pd.Timestamp(end).timestamp())
+    try:
+        return {"symbol": symbol.upper(), "ranges": orr.chart(symbol.upper(), s, e)}
+    except FileNotFoundError as e_:
+        raise HTTPException(404, str(e_)) from e_
+
+
+@app.get("/api/orb/research/brain")
+def orb_research_brain():
+    """Research -> ORB ML brain: features, score buckets, threshold."""
+    from src.api import orb_research as orr
+    try:
+        return orr.brain()
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
 @app.post("/api/live/control")
 def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
                  fill_time: int | None = None):

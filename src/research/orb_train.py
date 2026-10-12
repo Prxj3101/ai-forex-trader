@@ -96,3 +96,5 @@ if __name__ == "__main__":
     from src.live.orb import OrbEngine
     import inspect
     write_account_stats(inspect.signature(OrbEngine.__init__).parameters["risk_pct"].default)
+    from src.research.orb_research_data import build as build_research   # dashboard: Research -> ORB data
+    build_research()

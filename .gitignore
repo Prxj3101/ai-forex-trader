@@ -8,3 +8,8 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 reports/*.html
+
+# pnpm local store (never commit)
+.pnpm-store/
+# vision research weights (~1 GB, ViT files 344 MB > GitHub 100 MB limit; zones closed)
+models/vision/

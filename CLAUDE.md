@@ -455,3 +455,146 @@ User explicitly requested recording this experiment for LATER, with precautions 
 - 9 Oct ORB stats page: backtest ACCOUNT at the live ORB risk (0.4%, $10k): final $15,319, +53.2%, 5.6%/yr, maxDD 10.2%, worst month -3.6%,
   worst day -1.32%, 42% losing months, longest losing streak 13. Stored in data/research/orb_backtest_stats.json["account"]
   (python src\research\orb_risk_test.py account 0.4; orb_train.py re-adds it automatically). Shown on the ORB tab (card, ACCT % per year, $ curve).
+- 9 Oct RESEARCH TAB SPLIT BY STRATEGY (his ask: "alag alag rakhte h, sab mix nahi"; option b): header tabs now LIVE | RESEARCH only
+  (old ORB tab removed; saved 'orb' tab opens Research / ORB). Research has STRATEGY chips: ZONE BOT (everything as before) | ORB.
+  New strategy later = one entry in App.tsx STRATEGIES + its own view component.
+  Research / ORB (components/OrbResearchView.tsx) = OrbStatsPage (backtest vs live + 0.4% account) + OrbHistoryChart (old data, ranges +
+  backtest trades + why table, click row to zoom) + OrbResearchPanel (filters: pairs, sessions, compression NR4|TIGHT/NR4/NR7/TIGHT/INSIDE/
+  none/only-not-compressed, ML on/off, TP 2R/1R/16:00, side, 1 per day, years -> PF, halves, baseline, session x pair, year, weekday,
+  equity) + OrbBrainPanel (feature gain, 10 score groups, ML vs compression).
+  Data: src/research/orb_research_data.py -> data/research/orb_research.parquet (25,174 rows, walk-forward ML scores 2019-26; status
+  traded/skip_daily/skip_ml/skip_nocomp/no_break/no_ml; traded = 1,417 PF 1.16 = same as backtest). orb_train.py rebuilds it.
+  API (laptop, src/api/orb_research.py): /api/orb/research/report, /chart, /brain.
+  Brain finding: all breaks PF 0.97, compression only 0.99, ML only 1.07, ML + compression 1.22, ML but not compressed 0.97.
+  Not visually checked by me (no browser); tsc clean, API tested with TestClient.
+- 9 Oct ORB BREAKEVEN TEST (his question "1R pe SL c2c"; src/research/orb_be_test.py -> data/research/orb_be_test.parquet; 1,417 live-rule
+  trades 2019-26 on ticks, stop moves 1 s after trigger, costs incl.): BASE TP 2R PF 1.160 / +114.7R (= backtest exactly);
+  BE at 1R 1.143 / +89R (211 trades stopped at 0 that would have paid); C2C at 1R (entry + costs) 1.131 / +80R, win 50%;
+  BE at 1.5R 1.162 / +110R; BE at 1R no TP hold to 16:00 1.190 / +120R but 2023-26 only 1.03; LOCK +0.5R at 1.5R 1.171 / +115.4R,
+  win 47% (both halves +0.01-0.02 = noise). VERDICT: c2c at 1R HURTS (-22% profit); nothing clearly better -> ORB exit unchanged (TP 2R).
+- 9 Oct JUDGEMENT TEST STARTED (his "ha"): src/research/judge_make.py. 250 random M15 zone first-touches 2019-26 (84 EUR / 84 GBP / 82 JPY,
+  win at 1:1 48.8%, 46 ML keeps), key with hidden results + ML score: data/research/judge/key.parquet (5 batches of 50).
+  Images data/research/judge/img/<id>.png (H1 120 bars + M15 190 bars, only closed bars up to the fill, zone box, entry, SL; no date/result).
+  Page: claude.ai artifact "Zone Judge" https://claude.ai/artifact/AM7RRHDj5ByUAEv5xCaJQu (private, db capability). Answers in its db
+  collection "answers" (doc id = zone id: take, conf 1-3, tags, batch, at). Read with ArtifactData list.
+  Pass rule (fixed before): >= ~150 TAKE, TAKE net PF > 1.10 and clearly above SKIP (bootstrap). Next batch: python src\research\judge_make.py images 2.
+  9 Oct v2 of Zone Judge page (his ask: zoom like a real chart, less side gap): interactive lightweight-charts 4.2.3 (jsDelivr), M5/M15/H1/H4
+  (600/500/400/250 closed bars up to the fill), entry/SL/zone price lines, ZONE + NOW markers, wheel zoom / drag / double-click reset,
+  full-width layout. Chart data per zone: python src\research\judge_make.py data <batch> -> data/research/judge/data/<id>.json.
+- 9 Oct JUDGE BATCH 1 RESULT (answers saved data/research/judge/answers_batch1.json): 50 zones, he took 29 (58%), no confidence / tags used.
+  Net (costs incl.): ALL win 46% PF 0.66 @1:1, 0.91 @2R. HIS TAKE: win 41%, PF 0.52 @1:1, 0.94 @2R. HIS SKIP: win 52%, PF 0.92 @1:1, 0.87 @2R.
+  Bootstrap P(take better than skip @1:1) = 15%. Too few to judge (need ~150 TAKE); first signal NOT positive at 1:1, ~equal at 2R.
+  Advice given: be selective (take only real-money trades, ~20-30%), use confidence. Next: batch 2 (python src\research\judge_make.py data 2).
+  Batch 2 live on the same Zone Judge page (z051-z100); TAKE now waits for confidence 1-3 before moving on.
+- 9 Oct JUDGE BATCH 2 RESULT (answers of batch 1+2: data/research/judge/answers_all.json): he took 20/50 (more selective), confidence used.
+  Batch 2 net: TAKE win 55% PF 1.03 @1:1, PF 1.75 @2R (+8.3R); SKIP PF 1.11 @1:1, 0.92 @2R. Conf 1 (3 trades) 0.86 / conf 2 (13) 1.49 /
+  conf 3 (4) 5.5 @2R (tiny, but in the right order).
+  ALL 100 zones: TAKE 49 -> PF 0.69 @1:1 but 1.21 @2R (+7R); SKIP 51 -> 1.03 @1:1, 0.90 @2R. P(take better) @2R 77% (not significant yet),
+  @1:1 16%. His eye may help only with 2R targets (his own style). Bot ML keep on these 100: 0.74 @1:1, 1.24 @2R. Need ~150 TAKE -> batches 3-5.
+  Batch 3 (z101-z150) live on the Zone Judge page (judge_make.py data N now also writes batchN.json).
+- 9 Oct JUDGE BATCH 3 RESULT (answers_all.json now 150): batch 3 was a bad set (all zones PF 0.49 @1:1, 0.61 @2R); he took 19:
+  TAKE ~break-even (0.89 @1:1, 0.98 @2R), SKIP terrible (0.33 / 0.44, -17R) -> he filtered out the losers.
+  Batches 2+3 (selective + confidence): TAKE 39 -> PF 0.96 @1:1, 1.32 @2R (+8R); SKIP 61 -> 0.61 / 0.64 (-19R). P(take better) 87% @1:1, 95% @2R.
+  CONFIDENCE (b2+b3): conf 1 (10) 2 won, PF 0.18 @2R; conf 2 (19) 1.55 @2R; conf 3 (10) 9 won @1:1, PF 4.13 @2R (+10R). Clear order.
+  All 150: TAKE 68 -> 1.14 @2R (+6.7R) vs SKIP 82 -> 0.69 (-21R), P 93%. Bot ML keep (25): 1.54 @2R.
+  => First real sign of edge in HIS judgement (esp. conf 3), still small n. Next: batches 4-5 to confirm (target ~30+ conf-3 trades).
+  Batch 4 (z151-z200) live on the Zone Judge page.
+- 9 Oct JUDGE BATCH 4 RESULT (answers_all.json = 200): took 24/50 (conf 1:10, 2:7, 3:7). Batch 4: TAKE PF 0.54 @1:1, 0.80 @2R; SKIP 0.78 / 0.91
+  -> his pick did NOT help in batch 4, and conf order broke (conf 3: 3 of 7 won, ~break-even; conf 2 worst; conf 1 ok).
+  ALL 200: TAKE 92 -> 0.68 @1:1, 1.05 @2R (+3R); SKIP 108 -> 0.70 / 0.74 (-23R). P(take better @2R) 88% (not enough).
+  Conf 3 (b2-b4, 17 trades): 12 won @1:1, PF 2.24 @2R, P(better than rest) 98% but mostly from batch 3 (9 of 10).
+  Pre-set pass rule (TAKE PF > 1.10 and clearly above SKIP) currently FAILS (1.05). Batch 5 = last of the planned 250 -> final verdict then.
+- Judge batch 5 (z201-z250, LAST) live on Zone Judge page (9 Oct). After done: final analysis of all 250 vs pre-set rule (TAKE PF>1.10 and clearly > SKIP).
+- JUDGE TEST FINAL (9 Oct, all 250 done): FAIL. TAKE 113 -> PF@2R 0.93 (-5.7R) vs SKIP 137 -> 0.75 (-28.2R); P(take better) 80% (not clear).
+  Pre-set rule (TAKE PF>1.10 and clearly > SKIP) NOT met. Conf 3 out-of-sample broke: batch 5 conf3 = 0 wins out of 5 (all SL) (B2-B5 conf3 PF 1.34, n=22, too few).
+  Bot ML KEEP on same zones: PF 0.94. => Neither Prajwal's eye nor ML finds a zone edge. DECISION: ZONE STRATEGY PARKED. Focus = ORB shadow.
+  Answers: data/research/judge/answers_all.json (250).
+
+## VISION BOT PLAN ("Human Brain with Eyes") - agreed 10 Oct, NOT built yet (waiting for Prajwal's "ha")
+Goal: zone bot learns VISUALLY from chart pictures (like a human after 10 yrs of screen time) which zones win/lose and HOW FAR they run.
+1. Zones: run the live zone detector 2016-2026 on EURUSD/GBPUSD/USDJPY (same code as live).
+2. Labels from TICKS ONLY (never M5): buy at ask / sell at bid, $5/lot + 0.2 pip stop slip.
+   0 = SL first, 1 = hit 1R not 2R, 2 = hit 2R not 3R, 3 = 3R+ (trail type).
+3. Picture: H4 + H1 + M15 panels, only CLOSED candles before entry, zone box drawn. No price numbers, no date, no pair name.
+   + zoom panel: M1 / tick approach into the zone (last 30-60 min before fill) = how price reacts at the zone.
+4. Model: small CNN (CPU friendly) vs ViT (pretrained, fine-tuned) - both trained, winner picked on MOCK 2021-22 only, never on exam. Outputs P(SL), P(1R), P(2R), P(3R+) -> expected R -> skip / TP1R / TP2R / trail.
+5. Split: TRAIN 2016-2020 | MOCK (tuning, early stop, threshold) 2021-2022 | FINAL EXAM 2023-2026 opened ONCE.
+   Exam A = frozen model. Exam B = yearly retrain (learns from new charts). Pass (fixed now): net PF > 1.15, enough trades, clearly beats random zones.
+6. Live (only if pass): shadow first; monthly retrain with new zones, new model goes live only if it beats old one on unseen data.
+7. Phase 2 ("watch mode"): extra decision points after touch (+5/+15 min) with confirmation entry, own tick labels; compare to Phase 1.
+SAFETY CHECKS (must all pass, show Prajwal each one):
+ a) labels only from ticks; b) automatic test: last candle in every picture closed before fill, no unfinished HTF candle;
+ c) purge trades that span train/mock/exam boundaries + gap between periods; d) same picture code live and backtest + replay match (like ORB 20/20);
+ e) shuffled-label test must give NOTHING (else leak); f) 20-30 random zones shown to Prajwal (picture + tick result) for eye check;
+ g) never re-run the final exam after changing settings.
+- VISION Step 1 (10 Oct): src/research/vision/vision_data.py (samples | check). 42,276 M15 first-touch zones (train 2016-20: 19,676).
+  Pictures: H4|H1|M15 (60 closed bars) + M1 zoom from bid ticks (60 min before fill tick); asserts no future bar/tick.
+  Labels 0-3 from ticks; check 150/150 match v2 tick results. Samples: data/research/vision/sample_s1..s6(.png/_model.png/.npy). Waiting for Prajwal's eye check.
+  Compute note: VM 2 CPU/3GB, cloud 2 CPU/7GB, no GPU, no torch yet.
+- VISION audit (10 Oct): fill always after zone known (created_at = BOS bar close) | zone box = zone candle hi/lo 100% | entry = near edge, SL beyond 100%
+  | 42 same-tick duplicate fills -> dedup in zones() | live builds H4/H1/M15 with the SAME build_timeframes.resample (parity ok; source Dukascopy vs Exness = check in shadow)
+  | train label mix (250 zones 2016-20): SL 52% / 1R 17% / 2R 7% / 3R+ 24%, 0 missing ticks | 0.17 s per zone -> full build ~2 h, run on laptop.
+  TRAINING ADDITIONS: NO mirror (Prajwal 10 Oct: buy and sell behave differently -> pictures kept as-is, model sees direction from the picture); baselines on MOCK: take-all, old LightGBM, 1D-CNN on raw candles, image CNN/ViT;
+  costs + calibration of expected R on MOCK; exam scored with portfolio sim (same max positions as live).
+- VISION Step 2 READY (10 Oct): src/research/vision/vision_build.py (build | summary). Chunks per pair/year -> data/research/vision/build/{SYM}_{YEAR}.npz/.parquet,
+  resumable, 4 processes. Splits fixed in code: train 2016-20 | mock 21-22 | exam 23-26 | purge = last 3 days before a boundary. Summary never shows exam results.
+  Smoke test GBPUSD 2016 (20 zones): 0 errors, labels 20/20 = v2, leak 0, rebuild identical. ~1.75 KB/zone -> ~75 MB total.
+  Laptop: RTX 5060 Ti 16 GB (Blackwell -> PyTorch CUDA 12.8 wheels). He runs: venv -> pip torch cu128 -> check cuda -> build -> summary (send output).
+- VISION Step 2 DONE (10 Oct, laptop build ~5 min): 33/33 chunks, 42,234 zones (train 19,622 | mock 7,748 | exam 14,795 | purge 69).
+  errors 0 | LEAK 0 | labels 42,234/42,234 = v2 tick results | dups 0 | blank images 0 | 138 zones without zoom ticks (weekend opens).
+  Label mix train SL 52.5 / 1R 15.5 / 2R 7.9 / 3R+ 24.1 %; mock nearly identical. Exam NOT looked at. Torch 2.11+cu128 on laptop, CUDA OK.
+  NEXT: Step 3 training script (CNN on GPU, baselines, mock evaluation) - waiting for "ha".
+- VISION Step 3 READY (10 Oct): src/research/vision/vision_train.py (all | lgbm | cnn | shuffle | vit | report | smoke).
+  FIT 2016-19 / VAL 2020 (early stop) / MOCK 2021-22 (compare + thresholds from FIT score quantiles). Exam chunk files never opened.
+  Models: PanelCNN (shared eye per panel, 3 seeds + ensemble), ViT-B/16 ImageNet fine-tune (2x2 grid -> 224), LightGBM 4-class on old features, shuffle-label CNN (leak test).
+  Decision: expected net R = P(class) x avg net R per class/exit (from FIT) -> best exit. Output data/research/vision/results/eval_*.json, mock_*.parquet; weights models/vision/*.pt.
+  Smoke-tested in cloud on CPU (1200 zones): runs end to end; fixed OOM (lean loader, CNN batch 128). ViT weights download only on laptop.
+- VISION Phase 1 RESULT (10 Oct, laptop GPU, MOCK 2021-22, net): ALL models ~ coin toss. AUC reach-1R: cnn 0.511-0.529 (ens 0.520), vit 0.511-0.525 (ens 0.518),
+  lgbm 0.518, shuffle 0.502 (no leak). Base set PF tp2 0.779 (-1347R on 7748 zones). Best top-30% PF: cnn_s1 0.879 tp2, lgbm 0.862 -> still losing.
+  Fit loss stayed ~1.18 = class-prior entropy (1.17): even on training pictures no pattern found (CNN and ViT).
+  EYE TEST (cloud CPU, only 400 training pictures): buy/sell 99.5%, H1 panel up 83.8%, last M15 green 80.8% -> the eye + training WORK; outcome is just not in these pictures.
+  => Phase 1 (filter M15 first-touch zones by picture) FAILS on mock. EXAM NOT OPENED (kept clean for a future idea). Agrees with his eye (PF 0.93) and old LightGBM.
+  Options given: Phase 2 "watch mode" (decide after reaction at the zone, own tick labels) as one more pre-planned test, or park zones and focus ORB.
+- VISION PHASE 2 "WATCH MODE" (10 Oct, Prajwal chose it): src/research/vision/vision_watch_build.py (build D | summary D | smoke D), D = 5 or 15 min.
+  Rules fixed BEFORE results: watch D min after first touch; skip if SL hit during watch; MARKET entry at first tick >= decision (ask/bid);
+  SL = zone SL; skip if new risk < 0.5x or > 2x zone risk; picture = bars closed by decision + M1 zoom up to entry tick (shows the reaction);
+  labels 0-3 from ticks; net R tp1/tp2/trail from tick_engine.run_exit (cross-check). Output build_w5 / build_w15. Trainer: vision_train.py all w5 | all w15.
+  Smoke: GBPUSD 2016 20 touches -> 16 ok / 3 SL during watch / 1 geometry; leak 0; labels 16/16 = run_exit. Trainer smoke on w5 OK (ViT only on laptop).
+  PASS RULE (fixed now): on MOCK an ENSEMBLE (cnn_ens or vit_ens, not a single seed) top-30% net PF >= 1.15, clearly above take-all and shuffle,
+  in w5 or w15 -> only then the exam is opened (once). Otherwise zone strategy parked, focus ORB.
+- VISION PHASE 2 RESULT (11 Oct): FAIL vs pre-set rule. Data checks clean: w5 32,653 ok / w15 25,300 ok, errors 0, leak 0, entry-after-decision 0,
+  labels = run_exit 100%. MOCK take-all net PF tp2: touch 0.779 -> w5 0.811 -> w15 0.808 (watching helps a little, still losing).
+  Best ENSEMBLE top-30% PF: w5 vit_ens 0.893 (cnn_ens 0.854, lgbm 0.870) | w15 vit_ens 0.875 (cnn_ens 0.853, lgbm 0.882). Need 1.15. AUC 0.50-0.52, shuffle 0.49.
+  => Per pre-set rule: ZONE STRATEGY PARKED. EXAM 2023-26 STILL UNOPENED. Focus = ORB shadow.
+  Tries so far on zones: his eye judge, LightGBM, vision touch (CNN/ViT), watch 5, watch 15 = 5 attempts, all fail. Any future zone idea must clear a HIGHER bar.
+  Possible future (only if he wants): size/cost-aware hybrid + self-supervised pretraining on all chart windows.
+- VISION V3 (11 Oct) = LAST big zone try: src/research/vision/vision_v3.py (build | pretrain | train | all). Dataset = watch-5 only.
+  PRETRAIN: windows every 30 min 2016-2019 (purge last 3 days 2019), same picture without zone; target = +1 H1-ATR first / -1 ATR first / neither in 24h;
+  pretrain-val Oct-Dec 2019; ~145k pictures -> disk memmap data/research/vision/pretrain/all_imgs.npy (~14 GB). Eye saved models/vision/v3/eye_pretrained.pt.
+  MIN SL rule picked on FIT only (keep >= 50% fit trades, best fit take-all PF tp2). NUMBERS: log SL pips, cost R, spread R, NY hour sin/cos, weekday, pair, dir, zone height ATR, risk ATR.
+  MODELS: cnn_hyb, cnn_pre (pretrained eye), 3 seeds + ens each; lgbm_v3; shuffle. NO ViT (Prajwal 11 Oct).
+  PASS (stricter, 6th try): cnn_pre_ens only, pf_smart on MOCK: top30 >= 1.20 AND top50 >= 1.05 AND > shuffle AND (cnn_pre) > cnn_hyb_ens.
+  Smoke-tested (VM build + cloud CPU train): all parts run; ViT only fits on the laptop GPU. renderer change verified: old pictures identical.
+- VISION V3 RESULT (11 Oct): FAIL vs pre-set rule. cnn_pre_ens MOCK pf_smart top30 1.000 (need 1.20), top50 0.982 (need 1.05).
+  Learned: MIN SL 8 pips (picked on fit) lifts mock take-all PF tp2 0.811 -> 0.889; pretrained eye helps a bit (cnn_pre_ens 1.000 > cnn_hyb_ens 0.908 > shuffle 0.845;
+  AUC 0.533 = best of all zone tries) but only to BREAKEVEN. Pretrain itself: VAL acc 49-51% vs 49.3% guessing (direction not predictable from pictures).
+  6 zone attempts all fail. DECISION (pre-agreed): ZONE STRATEGY PARKED for good. Exam 2023-26 never opened. FOCUS = ORB shadow + weekly live-vs-backtest checks.
+  Disk: data/research/vision/pretrain/all_imgs.npy ~14 GB (can be deleted by Prajwal if space needed; pretrain chunks *.npz can rebuild it).
+- ZONE BASE-TRADE TEST (11 Oct): src/research/vision/zone_base_test.py (run | report), watch-5 + min SL 8 pips, 2016-2022, net. V0 reproduces build tp2 exactly (40/40).
+  Pooled 2019-22 PF: V0 base 0.886 | V1 SL buffer 0.25 ATR 0.874 | V2 buffer 0.5 ATR 0.877 | V3 TP 1.5R 0.885 | V4 London/NY killzone only 0.926 (1/4 years >= 0.95).
+  Every year 2016-2022 between 0.84 and 0.98 for every variant -> consistent loser, not bad luck. ALL FAIL pre-set rule.
+  => ZONES CLOSED FOR GOOD (7 attempts). Exam 2023-26 not opened (nothing worth testing). FOCUS = ORB.
+- GOLD ORB SCREEN (11 Oct, M5 approx, orb_confirm.py now has XAUUSD: pip $0.10, 1 lot = 100 oz, $7/lot commission): gold ticks only 2016 exist, so M5 screen first.
+  Screen bar: compression TP2R PF >= 1.15 on M5 (M5 ~0.04 optimistic) with learn 2016-20 >= 1.0 -> only then export gold ticks.
+  Result (compression NR4|TIGHT30, TP 2R, all 2016-26): ASIA 1.04 (learn 0.98 / test 1.10, ~119/yr), LON30 0.92, LON60 0.87, NY30 0.97, NY60 0.84. Plain ORB all <= 1.0.
+  => GOLD ORB FAILS, no gold tick download. Costs tiny (0.01-0.02R) -> gold just has no ORB edge with these rules.
+- CLEANUP (11 Oct, he asked): deleted data/research/vision/pretrain/all_imgs.npy (13 GB) + all_meta, _smoke/*.tgz test archives, all _smoke_* files, results_smoke*, base_test_smoke.
+- HF SCREEN (11 Oct): src/research/hf_screen.py, 3 new families, ONE fixed setting each, M5, net. Bar: PF >= 1.15 (2016-20) AND >= 1.10 (2021-26) AND >= 1 trade/day.
+  S1 Asia Bollinger mean reversion: 4.6 trades/day, PF 0.73 / 0.73 (-1385R) | S2 London->NY momentum: 0.9/day, 1.01 / 0.93 | S3 H1 EMA trend pullback: 2.5/day, 0.91 / 0.82.
+  ALL FAIL; more trades = worse after costs. ORB stays the only edge.
+- ORB TRADES IN LIVE DASHBOARD (12 Oct, he asked): live_status._orb_open_rows / _orb_closed_rows; build_ticks.open = zone trades (kind "zone") + ORB open (kind "orb", range, tp 2R, exit "tp2", commission $5/lot);
+  build_chart.open/trades also get ORB (exit_px from R). Frontend: chart shows ORB entry/SL/TP 1:2 lines + live $/pips/R label "ORB LON30 · BUY 0.4", markers "ORB BUY/ORB OPEN",
+  closed ORB lines faded with TP; right column OPEN TRADES cards show ORB (purple "ORB LON30 · 1:2", no CLOSE button - control.json is zone bot only);
+  LivePanel (zone account) filters out ORB. OrbPanel: stats + FLOATING + COMM. TOTAL + WIN/PF/R, open table (entry/SL/TP/NOW/pips/comm/P&L/R live via ticks),
+  full closed table (opened/closed/pair/range/side/lots/entry/SL/TP/exit/why/R/comm/P&L/equity). tsc clean (vite/client quirk only), 36 tests pass.
+  Backup of old live_status: data/research/_smoke/live_status_backup_20261012.py. DEPLOY: push + VPS git pull + restart LIVE API (and FOREX BOT not needed).

@@ -437,6 +437,9 @@ export type LiveTickTrade = {
   stop_now?: number | null
   best_r?: number | null
   r_now?: number | null
+  kind?: 'zone' | 'orb'          // 'orb' = ORB shadow trade (separate $10k account, TP 2R)
+  range?: string | null          // ORB range (ASIA / LON30 / LON60)
+  risk_usd?: number | null
 }
 
 // ---------------- ORB shadow (src/live/orb.py) ----------------
@@ -464,6 +467,10 @@ export type OrbRange = {
   open: boolean
   tp: number | null
   r_now: number | null
+  exit_time?: number | null      // research: when the trade closed
+  r?: number | null              // research: gross R at TP 2R (also what-if for skipped breaks)
+  r_net?: number | null
+  exit_reason?: string | null
 }
 
 export type OrbGroupStat = { n: number; pf: number | null; win: number; r: number; pnl?: number; range?: string; symbol?: string; year?: number }
@@ -483,6 +490,29 @@ export type OrbLive = {
   trades?: { day: string; symbol: string; range: string; direction: 'bull' | 'bear'; fill_time: string; exit_time: string; entry: number; sl: number; tp: number; score: number; lots: number; r: number; exit_reason: string; pnl: number; equity: number }[]
   live_stats?: { total?: OrbGroupStat; by_range_pair?: OrbGroupStat[]; by_range?: OrbGroupStat[]; by_symbol?: OrbGroupStat[] }
   equity_curve?: [number, number][]
+}
+
+export type OrbStat = { n: number; pf: number | null; win: number | null; r: number; avg_r: number | null }
+export type OrbResearchFilters = {
+  pairs: string[]; ranges: string[]; comp: string; ml: boolean; tp: string; one_per_day: boolean; direction: string; y0: number; y1: number
+}
+export type OrbResearchReport = {
+  filters: OrbResearchFilters & { years: number[]; ml_years_note: string | null }
+  total: OrbStat & { per_year: number; max_dd_r: number; pf_first_half: number | null; pf_second_half: number | null }
+  baseline: OrbStat & { label: string }
+  by_year: (OrbStat & { year: number })[]
+  by_range_pair: (OrbStat & { range: string; symbol: string })[]
+  by_symbol: (OrbStat & { symbol: string })[]
+  by_range: (OrbStat & { range: string })[]
+  by_weekday: (OrbStat & { weekday: string })[]
+  equity: [number, number][]
+}
+export type OrbBrain = {
+  meta: { trained_at: string; rows: number; data_to: string; threshold: number; keep: number; tp_r: number; tight_q30: Record<string, number>; label: string }
+  importance: { feature: string; share: number }[]
+  buckets: (OrbStat & { bucket: number; score_from: number; score_to: number })[]
+  split: Record<'all_breaks' | 'ml_keep' | 'ml_drop' | 'ml_keep_comp' | 'ml_keep_nocomp' | 'comp_no_ml', OrbStat>
+  note: string
 }
 
 export type OrbBacktest = {
@@ -522,8 +552,13 @@ export type LiveChart = {
     lots: number
     r_now: number | null
     fill_time: number | null
+    kind?: 'zone' | 'orb'
+    range?: string | null
   }[]
-  trades: { direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number }[]
+  trades: {
+    direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number
+    kind?: 'zone' | 'orb'; range?: string | null; tp?: number | null; exit_px?: number | null; lots?: number | null
+  }[]
   orb?: OrbRange[]
   traded_zones?: {
     direction: 'bull' | 'bear'
@@ -615,6 +650,14 @@ export const api = {
   liveTicks: () => request<LiveTicks>('/api/live/ticks'),
   liveOrb: () => request<OrbLive>('/api/live/orb'),
   orbBacktest: () => request<OrbBacktest>('/api/orb/backtest'),
+  orbResearchReport: (f: OrbResearchFilters) =>
+    request<OrbResearchReport>('/api/orb/research/report', {
+      pairs: f.pairs.join(','), ranges: f.ranges.join(','), comp: f.comp, ml: String(f.ml), tp: f.tp,
+      one_per_day: String(f.one_per_day), direction: f.direction, y0: f.y0, y1: f.y1,
+    }),
+  orbResearchChart: (symbol: string, start: string, end: string) =>
+    request<{ symbol: string; ranges: OrbRange[] }>('/api/orb/research/chart', { symbol, start, end }),
+  orbResearchBrain: () => request<OrbBrain>('/api/orb/research/brain'),
   liveControl: (c: LiveControl) => request<{ ok: boolean }>('/api/live/control', { ...c }, 'POST'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>

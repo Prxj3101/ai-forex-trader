@@ -177,13 +177,14 @@ export class OrbPrimitive implements ISeriesPrimitive<Time> {
         const risk = Math.abs(r.entry - r.sl)
         const tp = r.tp ?? (r.direction === 'bull' ? r.entry + 2 * risk : r.entry - 2 * risk)
         const xs = this.x(r.break_time)
-        const xe = this.x(r.open ? Math.min(r.eod, Math.max(now, r.break_time)) : r.eod)
+        const xe = this.x(r.open ? Math.min(r.eod, Math.max(now, r.break_time)) : (r.exit_time ?? r.eod))
         const ye = s.priceToCoordinate(r.entry)
         const ys = s.priceToCoordinate(r.sl)
         const yt = s.priceToCoordinate(tp)
         if (xs !== null && xe !== null && ye !== null && ys !== null && yt !== null) {
           const side = r.direction === 'bull' ? 'BUY' : 'SELL'
-          rd.lines.push({ x1: xs, x2: xe, y: ye, color: '#00e5ff', dash: false, width: 2, label: `ORB ${side}` })
+          const res = r.r != null && !r.open ? ` ${r.r > 0 ? '+' : ''}${r.r.toFixed(2)}R` : ''
+          rd.lines.push({ x1: xs, x2: xe, y: ye, color: '#00e5ff', dash: false, width: 2, label: `ORB ${side}${res}` })
           rd.lines.push({ x1: xs, x2: xe, y: ys, color: '#ff426e', dash: true, width: 1.5, label: 'SL' })
           rd.lines.push({ x1: xs, x2: xe, y: yt, color: '#00ff9c', dash: true, width: 1.5, label: 'TP 2R' })
         }

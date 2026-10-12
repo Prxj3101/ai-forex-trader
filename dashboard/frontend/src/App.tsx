@@ -7,7 +7,7 @@ import Header from './components/Header'
 import LivePanel from './components/LivePanel'
 import MLBrain from './components/MLBrain'
 import OrbPanel from './components/OrbPanel'
-import OrbStatsPage from './components/OrbStatsPage'
+import OrbResearchView from './components/OrbResearchView'
 import Pipeline from './components/Pipeline'
 import ResearchPanel from './components/ResearchPanel'
 import ScanPanel from './components/ScanPanel'
@@ -20,10 +20,9 @@ import { api, type AgentEvent, type AgentId, type BotConfig, type MLReport, type
 import { useEvents, useNow } from './lib/hooks'
 
 // Do tabs: LIVE (roz dekhna) aur RESEARCH (backtest / history / ML). Last chuna hua tab browser yaad rakhta hai.
-type Tab = 'live' | 'orb' | 'research'
+type Tab = 'live' | 'research'
 const TABS: { id: Tab; label: string; tip: string }[] = [
   { id: 'live', label: 'LIVE', tip: 'What the bot is doing right now on the VPS (broker feed)' },
-  { id: 'orb', label: 'ORB', tip: 'ORB strategy: backtest vs live shadow, by session and pair' },
   { id: 'research', label: 'RESEARCH', tip: 'History chart, ML brain, backtest account and research (downloaded data, not live)' },
 ]
 const TAB_KEY = 'dashboard_tab'
@@ -31,14 +30,40 @@ const TAB_KEY = 'dashboard_tab'
 function savedTab(): Tab {
   try {
     const t = localStorage.getItem(TAB_KEY)
-    return t === 'research' || t === 'orb' ? t : 'live'
+    return t === 'research' || t === 'orb' ? 'research' : 'live'
   } catch {
     return 'live'
   }
 }
 
+// RESEARCH tab ke andar har strategy ka alag dabba (kuch mix nahi). Nayi strategy = yahan ek entry + apna view.
+type Strategy = 'zone' | 'orb'
+const STRATEGIES: { id: Strategy; label: string; tip: string }[] = [
+  { id: 'zone', label: 'ZONE BOT', tip: 'Orderflow zone strategy: history chart with zones, ML brain, backtest account, research filters' },
+  { id: 'orb', label: 'ORB', tip: 'Opening range breakout: backtest vs live, history chart with ranges, research filters, ML brain' },
+]
+const STRAT_KEY = 'research_strategy'
+
+function savedStrategy(): Strategy {
+  try {
+    if (localStorage.getItem(TAB_KEY) === 'orb') return 'orb'           // old ORB tab -> Research / ORB
+    return localStorage.getItem(STRAT_KEY) === 'orb' ? 'orb' : 'zone'
+  } catch {
+    return 'zone'
+  }
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>(savedTab)
+  const [strategy, setStrategy] = useState<Strategy>(savedStrategy)
+  const changeStrategy = useCallback((st: Strategy) => {
+    setStrategy(st)
+    try {
+      localStorage.setItem(STRAT_KEY, st)
+    } catch {
+      // storage band ho toh bas yaad nahi rahega
+    }
+  }, [])
   const changeTab = useCallback((t: Tab) => {
     setTab(t)
     try {
@@ -204,9 +229,7 @@ export default function App() {
         />
         <Ticker symbols={Object.keys(symbols)} />
 
-        {tab === 'orb' ? (
-          <OrbStatsPage connected={connected} />
-        ) : tab === 'live' ? (
+        {tab === 'live' ? (
           <>
             <LivePanel connected={connected} />
             <OrbPanel connected={connected} />
@@ -215,6 +238,17 @@ export default function App() {
             </div>
           </>
         ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] tracking-[3px] text-muted">STRATEGY</span>
+              {STRATEGIES.map((st) => (
+                <button key={st.id} className={`chip px-3 ${strategy === st.id ? 'on' : ''}`} onClick={() => changeStrategy(st.id)}
+                  title={st.tip} aria-pressed={strategy === st.id}>{st.label}</button>
+              ))}
+            </div>
+            {strategy === 'orb' ? (
+              <OrbResearchView connected={connected} />
+            ) : (
           <>
             <div className="grid gap-2.5 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
               <AgentsPanel states={states} />
@@ -245,6 +279,8 @@ export default function App() {
             </div>
 
             <Pipeline states={states} />
+          </>
+            )}
           </>
         )}
 

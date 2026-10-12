@@ -177,13 +177,14 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
     const mk: SeriesMarker<Time>[] = []
     for (const t of data.trades) {
       const buy = t.direction === 'bull'
-      if (t.fill_ts >= first) mk.push({ time: t.fill_ts as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#00ff9c' : '#ff426e', shape: buy ? 'arrowUp' : 'arrowDown', text: buy ? 'BUY' : 'SELL' })
+      const tag = t.kind === 'orb' ? 'ORB ' : ''
+      if (t.fill_ts >= first) mk.push({ time: t.fill_ts as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#00ff9c' : '#ff426e', shape: buy ? 'arrowUp' : 'arrowDown', text: `${tag}${buy ? 'BUY' : 'SELL'}` })
       if (t.exit_ts >= first) mk.push({ time: t.exit_ts as UTCTimestamp, position: buy ? 'aboveBar' : 'belowBar', color: t.r > 0 ? '#00ff9c' : '#ff426e', shape: 'circle', text: `${t.r > 0 ? '+' : ''}${t.r.toFixed(1)}R` })
     }
     for (const t of data.open) {
       if (t.fill_time && t.fill_time >= first) {
         const buy = t.direction === 'bull'
-        mk.push({ time: t.fill_time as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: '#00e5ff', shape: buy ? 'arrowUp' : 'arrowDown', text: 'OPEN' })
+        mk.push({ time: t.fill_time as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', color: '#00e5ff', shape: buy ? 'arrowUp' : 'arrowDown', text: t.kind === 'orb' ? 'ORB OPEN' : 'OPEN' })
       }
     }
     mk.sort((a, b) => (a.time as number) - (b.time as number))
@@ -232,7 +233,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
     const RED = '#ff426e'
     const CYAN = '#00e5ff'
     const AMBER = '#ffb020'
-    const exitTag = (exit: string | null | undefined) => (exit === 'trail' ? 'TRAIL' : exit === 'tp1' ? '1:1' : '')
+    const exitTag = (exit: string | null | undefined) => (exit === 'trail' ? 'TRAIL' : exit === 'tp1' ? '1:1' : exit === 'tp2' ? '1:2' : '')
     const slLabel = (exit: string | null | undefined) => (exitTag(exit) ? `SL · ${exitTag(exit)}` : 'SL')
     const pnlOf = (t: (typeof data.open)[number]) => (px ? floatPnl({ ...t, symbol }, px.bid, px.ask) : null)
     // TP: bot ka diya hua (1:1) ya entry +/- 1R (trail trade / purana state jismein tp nahi)
@@ -242,7 +243,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
     for (const t of data.open) {
       if (!t.fill_time) continue
       const p = pnlOf(t)
-      const side = `${t.direction === 'bull' ? 'BUY' : 'SELL'} ${t.lots}`
+      const side = `${t.kind === 'orb' ? `ORB ${t.range ?? ''} · ` : ''}${t.direction === 'bull' ? 'BUY' : 'SELL'} ${t.lots}`
       segs.push({
         t1: t.fill_time, t2: null, price: t.entry, color: CYAN, width: 2,
         label: p ? `${side} · ${fmtSigned(p.pips)} pips · ${fmtUsd(p.usd)} · ${fmtSigned(p.r, 2)}R` : `ENTRY ${side}`,
@@ -254,7 +255,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
       const atTp = floatPnl({ ...t, symbol }, tpPx, tpPx)
       segs.push({
         t1: t.fill_time, t2: null, price: tpPx, color: GREEN, dash: true,
-        label: `${t.exit === 'trail' ? 'TP +1R · TRAIL STARTS' : 'TP 1:1'} ${tpPx.toFixed(digitsOf(symbol))} (${fmtUsd(atTp.usd)})`,
+        label: `${t.exit === 'trail' ? 'TP +1R · TRAIL STARTS' : t.exit === 'tp2' ? 'TP 1:2' : 'TP 1:1'} ${tpPx.toFixed(digitsOf(symbol))} (${fmtUsd(atTp.usd)})`,
       })
       if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) {
         segs.push({ t1: t.fill_time, t2: null, price: t.stop_now, color: AMBER, width: 2, label: `TRAIL SL (best +${(t.best_r ?? 0).toFixed(1)}R)` })
@@ -266,6 +267,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
       segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.entry, color: CYAN, faded: true })
       segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.sl, color: RED, dash: true, faded: true })
       if (t.exit === 'tp1') segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.entry + sign * risk, color: GREEN, dash: true, faded: true })
+      else if (t.exit === 'tp2') segs.push({ t1: t.fill_ts, t2: t.exit_ts, price: t.tp ?? t.entry + 2 * sign * risk, color: GREEN, dash: true, faded: true })
     }
     for (const z of data.zones) {
       if (z.status !== 'ready' || z.created_at == null) continue        // READY zone: agar bhara toh yahan entry / SL
@@ -284,7 +286,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
       const p = pnlOf(t)
       tag(t.entry, p ? (p.usd >= 0 ? GREEN : RED) : CYAN, p ? `ENTRY ${fmtUsd(p.usd)}` : 'ENTRY')
       tag(t.sl, RED, exitTag(t.exit) ? `SL ${exitTag(t.exit)}` : 'SL')
-      tag(tpOf(t), GREEN, t.exit === 'trail' ? 'TP +1R' : 'TP')
+      tag(tpOf(t), GREEN, t.exit === 'trail' ? 'TP +1R' : t.exit === 'tp2' ? 'TP 1:2' : 'TP')
       if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) tag(t.stop_now, AMBER, 'TRAIL')
     }
   }, [data, symbol, tf, px])
@@ -555,10 +557,12 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                     <div className="flex items-baseline gap-2">
                       <b className="font-medium">{t.symbol}</b>
                       <span style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'} {t.lots}</span>
-                      <span className="text-[10px]" style={{ color: t.exit === 'trail' ? '#ffb020' : 'var(--green)' }}>{t.exit === 'trail' ? 'TRAIL' : '1:1'}</span>
+                      {t.kind === 'orb'
+                        ? <span className="text-[10px]" style={{ color: '#b388ff' }} title="ORB shadow trade (separate $10k account): TP 2R, SL other side of the range, closes 16:00 NY">ORB {t.range} · 1:2</span>
+                        : <span className="text-[10px]" style={{ color: t.exit === 'trail' ? '#ffb020' : 'var(--green)' }}>{t.exit === 'trail' ? 'TRAIL' : '1:1'}</span>}
                       {fresh && <span className="text-[9px]" style={{ color: 'var(--cyan)' }}>NEW</span>}
                       <span className="ml-auto font-medium" style={{ color: col }}>{pl ? fmtUsd(pl.usd) : '—'}</span>
-                      <CloseButton t={t} closing={isClosing(t)} pnl={pl ? fmtUsd(pl.usd) : null} />
+                      {t.kind !== 'orb' && <CloseButton t={t} closing={isClosing(t)} pnl={pl ? fmtUsd(pl.usd) : null} />}
                     </div>
                     <div className="flex items-baseline gap-2 text-[10px] text-muted">
                       <span>{t.entry.toFixed(dg)} → {p ? (t.direction === 'bull' ? p.bid : p.ask).toFixed(dg) : '—'}</span>
