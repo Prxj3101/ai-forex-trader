@@ -241,7 +241,19 @@ def build_ticks(live: Path) -> dict:
     from src.live import control
     ctl = control.load(live)
     out["avoid"] = [{"symbol": a["symbol"], "zone": a["zone"], "direction": a["direction"]} for a in ctl["avoid"]]
+    out["take"] = [{"symbol": a["symbol"], "zone": a["zone"], "direction": a["direction"]} for a in ctl["take"]]
+    out["exit_set"] = [{"symbol": a["symbol"], "zone": a["zone"], "direction": a["direction"], "exit": a["exit"]}
+                       for a in ctl["exit"]]
     out["close_pending"] = []
+    out["exit_pending"] = []
+    out["orb_close_pending"] = []
+    of = live / "orb_state.json"
+    try:
+        odone = set(json.loads(of.read_text()).get("close_done", [])) if of.exists() else set()
+    except Exception:  # noqa: BLE001
+        odone = set()
+    out["orb_close_pending"] = [{"symbol": x["symbol"], "fill_time": x["fill_time"]}
+                                for x in ctl["orb_close"] if x["id"] not in odone]
     sf = live / "shadow_state.json"
     if sf.exists():
         try:
@@ -250,8 +262,12 @@ def build_ticks(live: Path) -> dict:
             done = set(st.get("close_done", []))
             out["close_pending"] = [{"symbol": x["symbol"], "fill_time": x["fill_time"]}
                                     for x in ctl["close"] if x["id"] not in done]
+            out["exit_pending"] = [{"symbol": x["symbol"], "fill_time": x["fill_time"], "exit": x["exit"]}
+                                   for x in ctl["trade_exit"] if x["id"] not in done]
             out["open"] = [{"symbol": t.get("symbol"), "direction": t.get("direction"), "entry": clean(t.get("entry")),
                             "sl": clean(t.get("sl")), "lots": clean(t.get("lots")), "exit": t.get("exit"),
+                            "exit_bot": t.get("exit_bot"), "user_exit": t.get("user_exit", ""),
+                            "taken_manual": t.get("user") == "take",
                             "sl_pips": clean(t.get("sl_pips")), "score": clean(t.get("score")),
                             "commission_usd": round(float(t.get("lots") or 0) * commission_per_lot, 2),
                             "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")),
@@ -428,7 +444,7 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
 # ORB SHADOW (src/live/orb.py): data/live/orb_state.json + orb_trades.csv
 # ----------------------------------------------------------------------
 ORB_STATUS_TEXT = {"waiting": "WAITING", "forming": "FORMING", "armed": "ARMED", "skip_nocomp": "NO COMPRESSION",
-                   "no_break": "NO BREAK", "skip_ml": "ML SKIP", "skip_daily": "1/DAY LIMIT", "skip_lot": "LOT TOO SMALL",
+                   "no_break": "NO BREAK", "skip_ml": "ML SKIP", "skip_daily": "1/DAY LIMIT", "skip_news": "NEWS BLOCK", "skip_lot": "LOT TOO SMALL",
                    "traded": "TRADED", "no_data": "NO DATA"}
 
 

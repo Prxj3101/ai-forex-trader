@@ -160,8 +160,9 @@ def break_features(rec: dict, m5: pd.DataFrame, break_ms: int, bull: bool, entry
 
 class OrbEngine:
     def __init__(self, feed, symbols=None, out_dir: Path = LIVE, log=print, capital: float = 10_000.0,
-                 risk_pct: float = 0.4, resume: bool = True, write_view: bool = True):
+                 risk_pct: float = 0.4, resume: bool = True, write_view: bool = True, news_guard=None):
         self.feed, self.log, self.out, self.write_view = feed, log, out_dir, write_view
+        self.news = news_guard          # 15 Oct: NEWS BLOCK -5/+20 min (config.NEWS_BLOCK_*), same as zone bot
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = OrbBrain()
         self.q30 = self.brain.meta["tight_q30"]
@@ -172,6 +173,8 @@ class OrbEngine:
         self.recs: dict = {}            # "day|symbol|range" -> record
         self.traded: set = set()        # "day|symbol" with an ORB trade
         self.n_closed = 0
+        self.close_done: set = set()    # 15 Oct: dashboard ORB CLOSE commands already done (control.json "orb_close")
+        self._ctl_mtime = None
         self.keep_days = 3              # dashboard / restart ke liye kitne din ke dabbe yaad rakhne hain
         self.out.mkdir(parents=True, exist_ok=True)
         self.state_file = self.out / "orb_state.json"
@@ -221,6 +224,7 @@ class OrbEngine:
                     except Exception as e:  # noqa: BLE001 - ORB kabhi bot na roke
                         self.log(f"ORB {key}: {e.__class__.__name__}: {e}")
         changed |= self._manage(now)
+        changed |= self._manual_close(now)
         if changed:
             self._prune(now)
         return changed
@@ -313,6 +317,11 @@ class OrbEngine:
         if dk in self.traded:
             self._final(rec, "skip_daily", f"{side} break, ML {s:.3f} ok but already 1 ORB trade on this pair today")
             return True
+        hit = self._news_hit(rec["symbol"], ms)
+        if hit:
+            self._final(rec, "skip_news", f"{side} break, ML {s:.3f} ok but inside news block: {hit}")
+            self.log(f"ORB {rec['symbol']} {rec['range']} {side} break skipped - news block ({hit})")
+            return True
         per_unit = risk_usd_per_unit(rec["symbol"], entry, risk)
         lots = float(np.floor((self.equity * self.risk_pct / 100 / per_unit) / LOT / 0.01) * 0.01)
         if lots < 0.01:
@@ -329,6 +338,20 @@ class OrbEngine:
         self.log(f"ORB TRADE {rec['symbol']} {rec['range']} {side} @ {entry} SL {sl} TP {tr['tp']:.5f} "
                  f"lots {lots:.2f} ML {s:.3f}")
         return True
+
+    def _news_hit(self, symbol: str, ms: int) -> str | None:
+        """Event name if the break time is inside a NEWS BLOCK window (-5/+20 min of a high-impact event of the pair's
+        currencies), else None. orb_news_test.py (15 Oct): 17 of 1,417 trades 2019-26, PF 0.19 -> block = PF 1.16 -> 1.18."""
+        if self.news is None or not getattr(self.news, "block_on", False):
+            return None
+        try:
+            t = pd.Timestamp(ms, unit="ms", tz="UTC")
+            b = self.news.block_windows(symbol)
+            hit = b[(b.start <= t) & (t <= b.end)]
+            return None if hit.empty else str(hit.event.iloc[0])
+        except Exception as e:  # noqa: BLE001 - calendar problem must not stop ORB
+            self.log(f"ORB news check failed: {e}")
+            return None
 
     def _final(self, rec: dict, status: str, reason: str):
         rec["status"], rec["reason"] = status, reason
@@ -360,6 +383,40 @@ class OrbEngine:
         self.open = still
         return changed
 
+    def _manual_close(self, now: int) -> bool:
+        """Dashboard CLOSE button on an ORB trade -> close at the last tick price (ticks were just fed in _manage)."""
+        from src.live import control
+        p = self.out / control.FILE
+        try:
+            mt = p.stat().st_mtime if p.exists() else None
+        except OSError:
+            return False
+        if mt is None or (mt == self._ctl_mtime and not getattr(self, "_ctl_pending", False)):
+            return False
+        self._ctl_mtime = mt
+        cmds = [x for x in control.load(self.out).get("orb_close", []) if x["id"] not in self.close_done]
+        self._ctl_pending = False
+        changed = False
+        for x in cmds:
+            t = next((t for t in self.open if t["symbol"] == x["symbol"]
+                      and int(pd.Timestamp(t["fill_time"]).timestamp()) == int(x["fill_time"])), None)
+            if t is None:
+                self.close_done.add(x["id"])
+                changed = True
+                continue
+            if now - int(t.get("last_ms", 0)) > 120_000:      # no fresh tick (market closed) -> try again later
+                self._ctl_pending = True
+                continue
+            r = float(t.get("r_now", 0.0))
+            self.open = [o for o in self.open if o is not t]
+            self._close(t, r, "manual", int(t["last_ms"]))
+            control.log_action(self.out, kind="orb_close", symbol=t["symbol"], direction=t["direction"],
+                               fill_time=int(x["fill_time"]), from_=t.get("exit"), to="closed", r_now=round(r, 3),
+                               score=t.get("score"), note=t.get("range"))
+            self.close_done.add(x["id"])
+            changed = True
+        return changed
+
     def _close(self, t: dict, r: float, why: str, ms: int):
         sym = t["symbol"]
         slip = 0.0
@@ -387,7 +444,7 @@ class OrbEngine:
         st = dict(version=1, updated=pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"), capital=self.capital,
                   risk_pct=self.risk_pct, equity=round(self.equity, 2), peak=round(self.peak, 2), n_closed=self.n_closed,
                   threshold=self.brain.threshold, tight_q30=self.q30, open=self.open, recs=self.recs,
-                  traded=sorted(self.traded))
+                  traded=sorted(self.traded), close_done=sorted(self.close_done)[-200:])
         tmp = self.state_file.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(st, default=str))
         tmp.replace(self.state_file)
@@ -401,6 +458,7 @@ class OrbEngine:
         self.equity, self.peak = float(st.get("equity", self.capital)), float(st.get("peak", self.capital))
         self.open, self.recs = st.get("open", []), st.get("recs", {})
         self.traded, self.n_closed = set(st.get("traded", [])), int(st.get("n_closed", 0))
+        self.close_done = set(st.get("close_done", []))
 
 
 def reset_state(out: Path = LIVE):

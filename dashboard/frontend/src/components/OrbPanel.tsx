@@ -19,7 +19,7 @@ const hm = (sec: number) => new Date(sec * 1000).toLocaleTimeString('en-GB', { t
 
 export const ORB_STATUS_COLOR: Record<string, string> = {
   waiting: 'var(--muted)', forming: 'var(--cyan)', armed: 'var(--green)', traded: 'var(--cyan)',
-  skip_nocomp: 'var(--muted)', no_break: 'var(--muted)', skip_ml: 'var(--amber)', skip_daily: 'var(--amber)',
+  skip_nocomp: 'var(--muted)', no_break: 'var(--muted)', skip_ml: 'var(--amber)', skip_daily: 'var(--amber)', skip_news: 'var(--amber)',
   skip_lot: 'var(--amber)', no_data: 'var(--red)',
 }
 const STATUS_TIP: Record<string, string> = {
@@ -31,6 +31,7 @@ const STATUS_TIP: Record<string, string> = {
   no_break: 'The range was not broken before 11:00 NY',
   skip_ml: 'The range broke, but the ML score was below the top-30% threshold',
   skip_daily: 'ML liked it, but this pair already had an ORB trade today (max 1 per pair per day)',
+  skip_news: 'ML liked it, but the break came inside a high-impact news window (-5 / +20 min), so no trade',
   skip_lot: 'Lot size below 0.01',
   no_data: 'Not enough candles for this range',
 }

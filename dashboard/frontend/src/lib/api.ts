@@ -385,6 +385,9 @@ export type LiveWatchZone = {
   sl_pips: number
   score: number
   exit: 'tp1' | 'trail'
+  exit_bot?: 'tp1' | 'trail' | null   // what the exit brain picked (exit = yours if you changed it)
+  user_exit?: string                  // '' = brain's choice, else the exit you set
+  taken?: boolean                     // you pressed TAKE (ML low / value area / quiet overridden)
   lots: number
   status: string
   reason: string
@@ -414,12 +417,42 @@ export type LiveTicks = {
   forming: Record<string, [number, number, number, number, number]>
   open: LiveTickTrade[]
   avoid?: { symbol: string; zone: number; direction: 'bull' | 'bear' }[]
+  take?: { symbol: string; zone: number; direction: 'bull' | 'bear' }[]
+  exit_set?: { symbol: string; zone: number; direction: 'bull' | 'bear'; exit: 'tp1' | 'trail' }[]
   close_pending?: { symbol: string; fill_time: number }[]
+  exit_pending?: { symbol: string; fill_time: number; exit: 'tp1' | 'trail' }[]
+  orb_close_pending?: { symbol: string; fill_time: number }[]
+}
+
+export type WeeklyBox = { n: number; R: number; pf: number | null; win_pct: number | null; note?: string }
+type WeeklyScope = {
+  bot_taken?: WeeklyBox
+  you_avoided?: WeeklyBox
+  you_taken?: WeeklyBox
+  ml_low_skipped?: WeeklyBox
+  your_exit_changes?: { n: number; R_yours: number; R_brain: number; R_gained: number; right: number; wrong: number }
+  your_trade_exit_changes?: { n: number; matched: number; R_yours?: number; R_brain?: number; R_gained?: number; right?: number; wrong?: number } | null
+  your_closes?: { n: number; matched: number; R_gained: number }
+}
+export type WeeklyReport = {
+  status?: string
+  error?: string
+  from_?: string
+  to?: string
+  zone_account?: WeeklyBox & { pnl_usd: number }
+  orb_account?: WeeklyBox & { pnl_usd: number; manual_closes: number }
+  zone_week?: WeeklyScope
+  zone_all_time?: WeeklyScope
+  your_actions_week?: Record<string, number>
+  text?: string
+  history?: string[]
 }
 
 export type LiveControl =
-  | { action: 'avoid' | 'unavoid'; symbol: string; zone: number; direction: 'bull' | 'bear' }
-  | { action: 'close'; symbol: string; fill_time: number }
+  | { action: 'avoid' | 'unavoid' | 'take' | 'untake' | 'unexit'; symbol: string; zone: number; direction: 'bull' | 'bear' }
+  | { action: 'exit'; symbol: string; zone: number; direction: 'bull' | 'bear'; exit: 'tp1' | 'trail' }
+  | { action: 'close' | 'orb_close'; symbol: string; fill_time: number }
+  | { action: 'trade_exit'; symbol: string; fill_time: number; exit: 'tp1' | 'trail' }
 
 export type LiveTickTrade = {
   symbol: string
@@ -438,6 +471,9 @@ export type LiveTickTrade = {
   best_r?: number | null
   r_now?: number | null
   kind?: 'zone' | 'orb'          // 'orb' = ORB shadow trade (separate $10k account, TP 2R)
+  exit_bot?: string | null       // exit brain's choice (exit = yours if you changed it)
+  user_exit?: string             // '' = brain's choice
+  taken_manual?: boolean         // you pressed TAKE on this zone
   range?: string | null          // ORB range (ASIA / LON30 / LON60)
   risk_usd?: number | null
 }
@@ -659,6 +695,7 @@ export const api = {
     request<{ symbol: string; ranges: OrbRange[] }>('/api/orb/research/chart', { symbol, start, end }),
   orbResearchBrain: () => request<OrbBrain>('/api/orb/research/brain'),
   liveControl: (c: LiveControl) => request<{ ok: boolean }>('/api/live/control', { ...c }, 'POST'),
+  liveWeekly: () => request<WeeklyReport>('/api/live/weekly'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>
     request<ResearchV2Report>('/api/research/v2/report', {

@@ -58,6 +58,9 @@ EXIT_POLICY = {"tp1": POL["tp1"], "trail": POL["trail1"]}
 HOLD_BARS = 3 * 288
 STATE_VERSION = 2
 TS_KEYS = ("bar_time", "zone", "fill_time", "exit_time")
+WI_COLS = ["logged_at", "symbol", "direction", "zone", "fill_time", "entry", "sl", "sl_pips", "score", "va_pos", "act",
+           "decision", "reason", "exit_brain", "r_tp1", "exit_tp1", "r_trail", "exit_trail", "trail_exit_time", "cost_r",
+           "net_tp1", "net_trail", "net_brain", "user", "exit_bot", "net_bot"]
 CLOSED_COLS = ["symbol", "direction", "zone", "fill_time", "exit_time", "entry", "sl", "sl_pips", "score", "va_pos", "act",
                "exit", "exit_reason", "r", "lots", "risk_pct", "risk_usd", "braked", "pnl"]
 
@@ -67,6 +70,8 @@ def _category(reason: str | None) -> str:
     if reason is None:
         return "taken"
     r = reason.lower()
+    if r.startswith("taken manually"):
+        return "taken_manual"
     for key, lab in (("avoided manually", "avoided"), ("ml score", "ml_low"), ("value area", "value_area"), ("market quiet", "quiet"),
                      ("news", "news"), ("kill", "kill_switch"), ("daily", "daily_limit"), ("lot below", "lot_small"),
                      ("already traded", "traded")):
@@ -123,7 +128,8 @@ def _num(v, nd=5):
 def _watch_row(r, o, reason) -> dict:
     """Ek zone jo bot abhi dekh raha hai -> dashboard watchlist / chart box."""
     return dict(direction=o["direction"], entry=o["entry"], sl=o["sl"], sl_pips=o["sl_pips"], score=o["score"],
-                exit=o["exit"], lots=o["lots"], status="ready" if reason is None else _category(reason),
+                exit=o["exit"], exit_bot=o.get("exit_bot"), user_exit=o.get("user_exit", ""),
+                taken=o.get("user") == "take", lots=o["lots"], status="ready" if reason is None else _category(reason),
                 reason=reason or "", zone_candle_time=_unix(r.zone_candle_time), created_at=_unix(r.created_at),
                 top=_num(getattr(r, "top", None)), bottom=_num(getattr(r, "bottom", None)),
                 body_top=_num(getattr(r, "body_top", None)), body_bottom=_num(getattr(r, "body_bottom", None)),
@@ -195,7 +201,9 @@ class ShadowEngine:
         # manual control (dashboard AVOID / CLOSE buttons)
         self.avoid: set = set()             # (symbol, zone unix, direction)
         self.parked: dict = {}              # symbol -> is candle ke orders jo avoid hue (UNDO pe wapas)
-        self.control: dict = {"avoid": [], "close": []}
+        self.control: dict = {k: [] for k in control.ZONE_LISTS + control.CMD_LISTS}
+        self.take: set = set()              # (symbol, zone unix, direction) jo tune TAKE kiye (ML low ho toh bhi lo)
+        self.exit_over: dict = {}           # (symbol, zone unix, direction) -> "tp1" / "trail" (tera exit, brain ki jagah)
         self.control_mtime = None
         self.close_done: set = set()        # close command ids jo ho chuke
         self.out.mkdir(parents=True, exist_ok=True)
@@ -211,6 +219,11 @@ class ShadowEngine:
                  f"ML spread floor {'ON' if self.spread_floor else 'OFF'}, broker commission ${self.cfg.commission_per_lot}/lot")
         self.closed_file = self.out / "closed_trades.csv"
         self.wi_file = self.out / "whatif.csv"
+        self.feat_file = self.out / "whatif_features.jsonl"   # har chhua zone: ML features + dono exits ka R + tera decision
+        if self.wi_file.exists():                   # 15 Oct: what-if mein user / exit_bot columns aaye -> purani file alag
+            head = self.wi_file.open().readline().strip().split(",")
+            if "user" not in head:
+                self.wi_file.replace(self.out / f"whatif_old_{pd.Timestamp.now():%Y%m%d_%H%M%S}.csv")
         self.state_file = self.out / "shadow_state.json"
         if resume:
             self._load_state()
@@ -484,7 +497,7 @@ class ShadowEngine:
             mtime = p.stat().st_mtime if p.exists() else None
         except OSError:
             return False
-        pending = [x for x in self.control.get("close", []) if x["id"] not in self.close_done]
+        pending = [x for k in ("close", "trade_exit") for x in self.control.get(k, []) if x["id"] not in self.close_done]
         if mtime == self.control_mtime and not pending:
             return False
         if mtime != self.control_mtime:
@@ -512,9 +525,60 @@ class ShadowEngine:
                     self._log_decision(symbol, o, "TAKE", f"manual avoid removed, lots {o['lots']}, {o['exit']}")
             for k in added:
                 self.log(f"  MANUAL: AVOID {k[0]} {k[2]} zone {pd.Timestamp(k[1], unit='s', tz='UTC').tz_convert(NY):%m-%d %H:%M} NY")
+                control.log_action(self.out, kind="avoid", symbol=k[0], zone=k[1], direction=k[2], score=self._zone_score(k))
             for k in removed:
                 self.log(f"  MANUAL: UNDO avoid {k[0]} {k[2]} zone {pd.Timestamp(k[1], unit='s', tz='UTC').tz_convert(NY):%m-%d %H:%M} NY")
+                control.log_action(self.out, kind="unavoid", symbol=k[0], zone=k[1], direction=k[2])
             self._mark_watch_all()
+            changed = True
+        # TAKE (ML low ho toh bhi lo) + EXIT override (trade se pehle) -> us pair ka decision abhi dobara
+        new_take = {control.zone_key(a["symbol"], a["zone"], a["direction"]) for a in self.control.get("take", [])}
+        new_exit = {control.zone_key(a["symbol"], a["zone"], a["direction"]): a["exit"] for a in self.control.get("exit", [])}
+        if new_take != self.take or new_exit != self.exit_over:
+            for k in new_take - self.take:
+                self.log(f"  MANUAL: TAKE {k[0]} {k[2]} zone {pd.Timestamp(k[1], unit='s', tz='UTC').tz_convert(NY):%m-%d %H:%M} NY")
+                control.log_action(self.out, kind="take", symbol=k[0], zone=k[1], direction=k[2], score=self._zone_score(k))
+            for k in self.take - new_take:
+                control.log_action(self.out, kind="untake", symbol=k[0], zone=k[1], direction=k[2])
+            for k in set(new_exit) | set(self.exit_over):
+                if new_exit.get(k) != self.exit_over.get(k):
+                    self.log(f"  MANUAL: EXIT {k[0]} {k[2]} zone -> {new_exit.get(k) or 'brain'}")
+                    control.log_action(self.out, kind="exit_zone", symbol=k[0], zone=k[1], direction=k[2],
+                                       from_=self.exit_over.get(k) or "brain", to=new_exit.get(k) or "brain")
+            touched = {k[0] for k in (new_take ^ self.take)} | {k[0] for k in set(new_exit) ^ set(self.exit_over)} | \
+                      {k[0] for k in new_exit if new_exit.get(k) != self.exit_over.get(k)}
+            self.take, self.exit_over = new_take, new_exit
+            self._redecide.update(touched)
+            changed = True
+        # TRADE_EXIT: khule trade ka exit beech mein badlo
+        for x in [x for x in self.control.get("trade_exit", []) if x["id"] not in self.close_done]:
+            t = next((t for t in self.open if t["symbol"] == x["symbol"] and _unix(t["fill_time"]) == int(x["fill_time"])), None)
+            if t is None:
+                self.close_done.add(x["id"])
+                changed = True
+                continue
+            new, old = x["exit"], t["exit"]
+            if new == old:
+                self.close_done.add(x["id"])
+                changed = True
+                continue
+            if new == "tp1" and float(t.get("r_now") or 0) >= 1.0:       # +1R se upar -> 1:1 matlab abhi band
+                px = (prices or {}).get(t["symbol"])
+                if not px or px.get("tick_age_sec") is None or px["tick_age_sec"] > 60:
+                    continue                                               # bhav nahi -> baad mein
+                exit_px = px["bid"] if t["bull"] else px["ask"]
+                r = ((exit_px - t["entry"]) if t["bull"] else (t["entry"] - exit_px)) / t["risk"]
+                self.open = [o for o in self.open if o is not t]
+                t["exit"], t["user_exit"] = "tp1", "tp1"
+                self._book_close(t, float(r), "manual", pd.Timestamp.now(tz="UTC"))
+                self._log_decision(t["symbol"], t, "CLOSED-MANUAL", f"you set 1:1 above +1R -> closed at {exit_px}, R {r:+.2f}")
+            else:
+                t["exit"], t["user_exit"] = new, new
+                t.update(te.levels(t))
+                self._log_decision(t["symbol"], t, "EXIT-CHANGED", f"{old} -> {new} by you (R now {t.get('r_now')})")
+            control.log_action(self.out, kind="exit_trade", symbol=t["symbol"], direction=t["direction"], zone=_unix(t["zone"]),
+                               fill_time=_unix(t["fill_time"]), from_=old, to=new, r_now=t.get("r_now"), score=t.get("score"))
+            self.close_done.add(x["id"])
             changed = True
         for x in [x for x in self.control.get("close", []) if x["id"] not in self.close_done]:
             t = next((t for t in self.open if t["symbol"] == x["symbol"] and _unix(t["fill_time"]) == int(x["fill_time"])), None)
@@ -532,8 +596,18 @@ class ShadowEngine:
             self._book_close(t, float(r), "manual", pd.Timestamp.now(tz="UTC"))
             self.close_done.add(x["id"])
             self._log_decision(t["symbol"], t, "CLOSED-MANUAL", f"closed by you at {exit_px}, R {r:+.2f}, pnl ${t['pnl']:+.2f}")
+            control.log_action(self.out, kind="close", symbol=t["symbol"], direction=t["direction"], zone=_unix(t["zone"]),
+                               fill_time=_unix(t["fill_time"]), from_=t["exit"], to="closed", r_now=round(float(r), 3),
+                               score=t.get("score"))
             changed = True
         return changed
+
+    def _zone_score(self, k):
+        """ML score of a watched zone (for the action log)."""
+        for z in self.watch.get(k[0], {}).get("zones", []):
+            if z["zone_candle_time"] == k[1] and z["direction"] == k[2]:
+                return z.get("score")
+        return None
 
     def _mark_watch_all(self):
         """Watchlist: avoided zones -> status 'avoided'; UNDO hua toh READY wapas (agar bot ne TAKE kiya tha)."""
@@ -582,16 +656,39 @@ class ShadowEngine:
             wrow = _watch_row(r, o, reason)
             o["zbox"] = {k: wrow[k] for k in ("top", "bottom", "body_top", "body_bottom", "created_at",
                                                "zone_candle_time", "disp_atr", "has_fvg")}   # chart pe zone box
-            wi.append(dict(o, label=_category(reason), reason=reason or "",
+            lab = _category(reason)
+            if reason is None and o.get("user") == "take":
+                lab = "taken_manual"
+            wi.append(dict(o, label=lab, reason=reason or ("taken manually" if lab == "taken_manual" else ""),
+                           user="take" if o.get("user") == "take" else ("avoid" if lab == "avoided" else ""),
+                           feat=self._features(r),
                            cost_r=float(r.cost_r) * self.cfg.commission_per_lot / wf_commission()
                            if pd.notna(r.cost_r) else None))
             self.watch[symbol]["zones"].append(wrow)
             if reason is None:
                 self.armed[symbol].append(o)
-                self._log_decision(symbol, o, "TAKE", f"lots {o['lots']}, risk {o['risk_pct']:.2f}%, {o['exit']}")
+                why = "taken manually (you), " if o.get("user") == "take" else ""
+                ex = f"{o['exit']}" + (f" (yours, brain {o['exit_bot']})" if o.get("user_exit") else "")
+                self._log_decision(symbol, o, "TAKE", f"{why}lots {o['lots']}, risk {o['risk_pct']:.2f}%, {ex}")
             else:
                 self._log_decision(symbol, o, "SKIP", reason)
         self.wi_armed[symbol] = wi
+
+    def _features(self, r) -> dict:
+        """ML features of this candidate (for the monthly training) - plain python values."""
+        out = {}
+        for f in self.brain.features:
+            v = getattr(r, f, None)
+            if isinstance(v, (np.bool_, bool)):
+                v = bool(v)
+            elif isinstance(v, (np.integer,)):
+                v = int(v)
+            elif isinstance(v, (np.floating, float)):
+                v = None if np.isnan(v) else float(v)
+            elif v is not None and not isinstance(v, (int, str)):
+                v = str(v)
+            out[f] = v
+        return out
 
     def _order(self, symbol, r, bar_time, risk_pct, braked):
         bull = r.direction == "bull"
@@ -602,17 +699,23 @@ class ShadowEngine:
                     score=round(float(r.score), 3), ml_keep=bool(r.ml_keep), va_ok=bool(r.va_ok),
                     va_pos=round(float(r.r24_va_pos), 2) if pd.notna(r.r24_va_pos) else None,
                     act_ok=bool(r.act_ok), act=round(float(r.act_15m), 2) if pd.notna(r.act_15m) else None,
-                    exit=r.exit_choice, lots=round(lots, 2), risk_usd=round(lots * LOT * per_unit, 2),
+                    exit=self.exit_over.get(control.zone_key(symbol, _unix(r.zone_candle_time), r.direction), r.exit_choice),
+                    exit_bot=r.exit_choice,
+                    user_exit=self.exit_over.get(control.zone_key(symbol, _unix(r.zone_candle_time), r.direction), ""),
+                    lots=round(lots, 2), risk_usd=round(lots * LOT * per_unit, 2),
                     usd_side=usd_side(symbol, r.direction), braked=braked, risk_pct=round(risk_pct, 3),
                     spread_live=_pips(symbol, getattr(r, "spread_live", None)),
                     spread_used=_pips(symbol, getattr(r, "spread_used", None)))
 
     def _skip_reason(self, symbol, r, o, today, bar_time):
-        if not o["ml_keep"]:
+        taken = control.zone_key(symbol, _unix(o["zone"]), o["direction"]) in self.take
+        if taken and not (o["ml_keep"] and o["va_ok"] and o["act_ok"]):
+            o["user"] = "take"                     # tera TAKE: ML / value area / quiet ko override (risk rules nahi)
+        elif not o["ml_keep"]:
             return f"ML score {o['score']:.2f} < {self.brain.threshold:.2f}"
-        if not o["va_ok"]:
+        elif not o["va_ok"]:
             return f"price above value area ({o['va_pos']})"
-        if not o["act_ok"]:
+        elif not o["act_ok"]:
             return f"market quiet (activity {o['act']} < {config.ACT_MIN})"
         if self.kill:
             return "kill switch active"
@@ -668,8 +771,8 @@ class ShadowEngine:
                 continue
             label = o["label"]
             if (symbol, str(o["zone"]), o["bar_time"]) in self.filled_now:
-                label = "taken"
-            elif label == "taken":
+                label = "taken_manual" if label == "taken_manual" else "taken"
+            elif label in ("taken", "taken_manual"):
                 # TAKE tha, par fill ke waqt limit / daily rule ne roka - ya candle ke beech tune AVOID dabaya
                 label = "avoided" if self._avoided(symbol, o) else "fill_skipped"
             self.wi_open.append(dict(o, label=label, fill_time=o["bar_time"]))
@@ -704,8 +807,17 @@ class ShadowEngine:
                        r_tp1=round(res["tp1"][0], 3), exit_tp1=res["tp1"][1], r_trail=round(res["trail"][0], 3),
                        exit_trail=res["trail"][1], trail_exit_time=res["trail"][2], cost_r=round(cost, 4),
                        net_tp1=round(net["tp1"], 3), net_trail=round(net["trail"], 3),
-                       net_brain=round(net[w["exit"]], 3))
-            pd.DataFrame([row]).to_csv(self.wi_file, mode="a", header=not self.wi_file.exists(), index=False)
+                       net_brain=round(net[w["exit"]], 3), user=w.get("user", ""),
+                       exit_bot=w.get("exit_bot", w["exit"]), net_bot=round(net[w.get("exit_bot", w["exit"])], 3))
+            pd.DataFrame([row]).reindex(columns=WI_COLS).to_csv(self.wi_file, mode="a", header=not self.wi_file.exists(),
+                                                                index=False)
+            try:                                   # mahine ki training ke liye: features + result (src/ml/monthly_retrain.py)
+                rec = {k: (str(v) if isinstance(v, pd.Timestamp) else v) for k, v in row.items()}
+                rec["features"] = w.get("feat") or {}
+                with self.feat_file.open("a") as fh:
+                    fh.write(json.dumps(rec, default=str) + "\n")
+            except Exception as e:  # noqa: BLE001
+                self.log(f"what-if features log: {e}")
         self.wi_open = still
 
     # ------------------------------------------------------------------
@@ -788,12 +900,13 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
     orb = None
     try:                                         # ORB shadow (src/live/orb.py): alag virtual account, zone bot pe asar nahi
         from src.live.orb import OrbEngine
-        orb = OrbEngine(feed, resume=True)
+        orb = OrbEngine(feed, resume=True, news_guard=guard)
     except Exception as e:  # noqa: BLE001 - ORB na chale toh bhi zone bot chalta rahe
         print(f"ORB off: {e.__class__.__name__}: {e}")
     last = {}
     news_hour = pd.Timestamp.now(tz="UTC").floor("h")
     last_health = 0.0
+    last_week = 0.0
     print("Shadow mode chal raha hai (koi order nahi). Band karne ke liye Ctrl+C.")
     try:
         while True:
@@ -832,6 +945,14 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
             if time.time() - last_health >= health_every_s:
                 monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / VPS sehat (har ~5 s)
                 last_health = time.time()
+            if time.time() - last_week >= 60:                          # Saturday (NY): weekend report (once)
+                last_week = time.time()
+                try:
+                    from src.live import weekly_report
+                    if weekly_report.maybe_write(LIVE):
+                        print("weekend report written -> data/live/weekly/")
+                except Exception as e:  # noqa: BLE001 - report kabhi bot na roke
+                    print(f"weekly report error: {e.__class__.__name__}: {e}")
             time.sleep(poll_s)
     except KeyboardInterrupt:
         eng.save()

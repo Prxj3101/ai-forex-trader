@@ -99,16 +99,49 @@ def live_orb(x_live_token: str = Header(default="")):
 
 @app.post("/api/live/control")
 def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
-                 fill_time: int | None = None, x_live_token: str = Header(default="")):
-    """Sirf 2 manual buttons: AVOID/UNDO zone, CLOSE khula shadow trade. Bot ~1 s mein lagata hai."""
+                 fill_time: int | None = None, exit: str | None = None,  # noqa: A002
+                 x_live_token: str = Header(default="")):
+    """Manual buttons: AVOID/TAKE/EXIT zone, EXIT/CLOSE open zone trade, CLOSE ORB trade (src/live/control.py)."""
     if not hmac.compare_digest(x_live_token, TOKEN):
         raise HTTPException(401, "bad token")
     from src.live import control
     try:
-        c = control.apply(LIVE, action, symbol, zone=zone, direction=direction, fill_time=fill_time)
+        c = control.apply(LIVE, action, symbol, zone=zone, direction=direction, fill_time=fill_time, exit=exit)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return {"ok": True, "avoid": c["avoid"], "close": c["close"]}
+    return {"ok": True, **c}
+
+
+@app.get("/api/live/weekly")
+def live_weekly(x_live_token: str = Header(default="")):
+    """Latest weekend report (data/live/weekly/, written by the bot every Saturday NY)."""
+    if not hmac.compare_digest(x_live_token, TOKEN):
+        raise HTTPException(401, "bad token")
+    from src.live import weekly_report
+    return weekly_report.latest(LIVE) or {"status": "none"}
+
+
+@app.get("/api/live/learning")
+def live_learning(x_live_token: str = Header(default="")):
+    """Monthly training (laptop, src/ml/monthly_retrain.py): every touched zone with features + both exits' R +
+    your decision (whatif_features.jsonl) and your manual actions (user_actions.csv)."""
+    if not hmac.compare_digest(x_live_token, TOKEN):
+        raise HTTPException(401, "bad token")
+    import json as _json
+    rows = []
+    f = LIVE / "whatif_features.jsonl"
+    if f.exists():
+        for line in f.read_text().splitlines():
+            try:
+                rows.append(_json.loads(line))
+            except Exception:  # noqa: BLE001
+                pass
+    acts = []
+    a = LIVE / "user_actions.csv"
+    if a.exists():
+        import pandas as pd
+        acts = pd.read_csv(a).astype(object).where(lambda x: x.notna(), None).to_dict("records")
+    return {"rows": rows, "actions": acts}
 
 
 if __name__ == "__main__":

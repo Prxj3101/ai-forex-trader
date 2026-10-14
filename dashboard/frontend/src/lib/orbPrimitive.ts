@@ -20,7 +20,7 @@ type Line = { x1: number; x2: number; y: number; color: string; dash: boolean; w
 type Rect = { x1: number; x2: number; yTop: number; yBot: number; color: string; alpha: number; dashed: boolean; label: string; row: number }
 
 export const ORB_COLORS: Record<string, string> = { ASIA: '#b388ff', LON30: '#ffb020', LON60: '#ff7a45' }
-const ARMED_LIKE = new Set(['armed', 'no_break', 'skip_ml', 'skip_daily', 'skip_lot', 'traded'])
+const ARMED_LIKE = new Set(['armed', 'no_break', 'skip_ml', 'skip_daily', 'skip_news', 'skip_lot', 'traded'])
 
 class OrbRenderer implements IPrimitivePaneRenderer {
   rects: Rect[] = []

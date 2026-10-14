@@ -13,3 +13,6 @@ reports/*.html
 .pnpm-store/
 # vision research weights (~1 GB, ViT files 344 MB > GitHub 100 MB limit; zones closed)
 models/vision/
+
+# monthly_retrain backups (laptop only)
+models/archive/

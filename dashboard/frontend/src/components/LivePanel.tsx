@@ -5,6 +5,7 @@ import { floatPnl, fmtFill, fmtSigned, fmtUsd, useLiveTicks } from '../lib/pnl'
 import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
 import LiveMarketPanel, { CloseButton } from './LiveMarketPanel'
+import WeeklyReportPanel from './WeeklyReportPanel'
 
 /*
   LIVE SHADOW ACCOUNT: shadow bot (src/live/shadow.py) jo files likhta hai, unka live view.
@@ -20,6 +21,7 @@ const DECISION_LABEL: Record<string, { text: string; tip: string }> = {
   taken: { text: 'TAKEN', tip: 'The bot opened this trade' },
   fill_skipped: { text: 'FILL SKIPPED', tip: 'The bot wanted it, but a limit or daily rule blocked it at the fill' },
   avoided: { text: 'AVOIDED BY YOU', tip: 'The bot wanted it, but you pressed AVOID. The numbers show whether avoiding helped.' },
+  taken_manual: { text: 'TAKEN BY YOU', tip: 'The bot skipped it (ML low / value area / quiet), but you pressed TAKE.' },
   ml_low: { text: 'ML LOW', tip: 'ML score below the top-30% threshold' },
   value_area: { text: 'VALUE AREA', tip: 'Entry on the expensive side of the last 24h value area' },
   quiet: { text: 'QUIET MARKET', tip: 'Tick volume before the touch was below 0.9x the 24h average' },
@@ -33,7 +35,7 @@ const DECISION_LABEL: Record<string, { text: string; tip: string }> = {
 function decisionColor(d: string) {
   if (d === 'FILLED' || d === 'TAKE') return 'var(--green)'
   if (d === 'FILL-SKIPPED') return 'var(--amber)'
-  if (d === 'CLOSED-MANUAL') return 'var(--cyan)'
+  if (d === 'CLOSED-MANUAL' || d === 'EXIT-CHANGED') return 'var(--cyan)'
   return 'var(--muted)'
 }
 
@@ -534,6 +536,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         </div>
       </div>
 
+      <WeeklyReportPanel connected={connected} />
       <BotLog lines={data.log ?? []} />
     </div>
     </>

@@ -37,7 +37,8 @@ const digitsOf = (s: string) => (s.endsWith('JPY') ? 3 : 5)
 const STATUS: Record<string, { text: string; color: string; tip: string }> = {
   ready: { text: 'READY', color: 'var(--green)', tip: 'Passes every check. If price touches the entry in this candle, the bot takes it.' },
   filled: { text: 'FILLED', color: 'var(--cyan)', tip: 'Price reached the entry: the trade is open (see OPEN TRADES)' },
-  avoided: { text: 'AVOIDED', color: 'var(--amber)', tip: 'You told the bot not to trade this zone (press UNDO to allow it again)' },
+  avoided: { text: 'AVOIDED', color: 'var(--amber)', tip: 'You told the bot not to trade this zone (press TAKE to trade it again)' },
+  taken: { text: 'TAKEN (YOU)', color: 'var(--cyan)', tip: 'You pressed TAKE: the bot trades it even though ML / value area / quiet said no (risk rules still apply)' },
   fill_skipped: { text: 'FILL SKIPPED', color: 'var(--amber)', tip: 'Price reached the entry but a risk limit blocked the trade at that moment' },
   ml_low: { text: 'ML LOW', color: 'var(--muted)', tip: 'ML score below the top-30% threshold' },
   value_area: { text: 'VALUE AREA', color: 'var(--muted)', tip: 'Entry on the expensive side of the last 24h value area' },
@@ -370,6 +371,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
 /** CLOSE button: khula shadow trade abhi market price pe band (bot ~1 s mein karta hai). */
 export function CloseButton({ t, closing, pnl }: { t: LiveTickTrade; closing: boolean; pnl: string | null }) {
   if (t.fill_time == null) return null
+  const orb = t.kind === 'orb'
   if (closing) return <span className="text-[9px]" style={{ color: 'var(--amber)' }}>CLOSING...</span>
   return (
     <button
@@ -380,8 +382,8 @@ export function CloseButton({ t, closing, pnl }: { t: LiveTickTrade; closing: bo
         e.stopPropagation()
         const side = t.direction === 'bull' ? 'BUY' : 'SELL'
         void sendControl(
-          { action: 'close', symbol: t.symbol, fill_time: t.fill_time! },
-          `Close this trade now at the market price?\n\n${t.symbol} ${side} ${t.lots} lots at ${t.entry}${pnl ? `\nRight now: ${pnl}` : ''}\n\nThis cannot be undone.`,
+          { action: orb ? 'orb_close' : 'close', symbol: t.symbol, fill_time: t.fill_time! },
+          `Close this ${orb ? 'ORB ' : ''}trade now at the market price?\n\n${t.symbol} ${side} ${t.lots} lots at ${t.entry}${pnl ? `\nRight now: ${pnl}` : ''}\n\nThis cannot be undone.`,
         )
       }}
     >
@@ -421,7 +423,17 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
   const isAvoided = (sym: string, zone: number | null | undefined, dir: string) =>
     zone != null && (ticks?.avoid ?? []).some((a) => a.symbol === sym && a.zone === zone && a.direction === dir)
   const isClosing = (t: LiveTickTrade) =>
-    (ticks?.close_pending ?? []).some((c) => c.symbol === t.symbol && c.fill_time === t.fill_time)
+    (t.kind === 'orb' ? ticks?.orb_close_pending ?? [] : ticks?.close_pending ?? []).some((c) => c.symbol === t.symbol && c.fill_time === t.fill_time)
+  const isTaken = (sym: string, zone: number | null | undefined, dir: string) =>
+    zone != null && (ticks?.take ?? []).some((a) => a.symbol === sym && a.zone === zone && a.direction === dir)
+  // exit shown in the watchlist: yours (ticks.exit_set, instant) else the exit brain's
+  const exitOf = (z: LiveWatchZone & { symbol: string }) => {
+    if (!ticks?.exit_set || z.zone_candle_time == null) return { exit: z.exit, mine: !!z.user_exit }
+    const m = ticks.exit_set.find((a) => a.symbol === z.symbol && a.zone === z.zone_candle_time && a.direction === z.direction)
+    return m ? { exit: m.exit, mine: true } : { exit: (z.exit_bot ?? z.exit) as 'tp1' | 'trail', mine: false }
+  }
+  const exitPending = (t: LiveTickTrade) =>
+    (ticks?.exit_pending ?? []).find((c) => c.symbol === t.symbol && c.fill_time === t.fill_time)
 
   const news = h?.news
   const pairs = Object.keys(data?.watch?.symbols ?? {}).length ? Object.keys(data!.watch!.symbols) : PAIRS
@@ -477,15 +489,20 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                     <th className="text-right font-normal">ENTRY</th>
                     <th className="text-right font-normal" title="Pips price still has to travel to reach the entry">AWAY</th>
                     <th className="text-right font-normal">ML</th>
-                    <th className="text-right font-normal" title="Exit the exit brain picked: 1:1 = fixed target at 1R; TRAIL = stop follows price after +1R">EXIT</th>
+                    <th className="text-right font-normal" title="Exit for this zone: 1:1 = fixed target at 1R; TRAIL = stop follows price after +1R. Click to switch (yours is marked *); click back to the brain's pick to undo.">EXIT</th>
                     <th className="text-right font-normal">STATUS</th>
-                    <th className="font-normal" title="AVOID = you tell the bot not to trade this zone. UNDO = allow it again." />
+                    <th className="font-normal" title="AVOID = do not trade this zone. TAKE = trade it (also when ML / value area / quiet said no). Press again to switch back - as often as you like, until price fills the zone." />
                   </tr>
                 </thead>
                 <tbody>
                   {watch.map((z, i) => {
                     const avoided = isAvoided(z.symbol, z.zone_candle_time, z.direction) || z.status === 'avoided'
-                    const st = avoided ? STATUS.avoided : STATUS[z.status] ?? { text: z.status.toUpperCase(), color: 'var(--muted)', tip: z.reason }
+                    const taken = !avoided && (ticks?.take ? isTaken(z.symbol, z.zone_candle_time, z.direction) : !!z.taken)
+                    const takeable = ['ml_low', 'value_area', 'quiet'].includes(z.status)
+                    const st = avoided ? STATUS.avoided : taken && (z.status === 'ready' || takeable) ? STATUS.taken
+                      : STATUS[z.status] ?? { text: z.status.toUpperCase(), color: 'var(--muted)', tip: z.reason }
+                    const ex = exitOf(z)
+                    const side = z.direction === 'bull' ? 'BUY' : 'SELL'
                     return (
                       <tr
                         key={i}
@@ -498,26 +515,60 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                         <td className="text-right">{z.entry.toFixed(digitsOf(z.symbol))}</td>
                         <td className="text-right" style={{ color: z.away != null && z.away < 3 ? 'var(--amber)' : undefined }}>{z.away == null ? '—' : z.away.toFixed(1)}</td>
                         <td className="text-right" style={{ color: z.score >= (data?.watch?.threshold ?? 1) ? 'var(--green)' : 'var(--muted)' }}>{Math.round(z.score * 100)}%</td>
-                        <td className="text-right" style={{ color: z.exit === 'trail' ? '#ffb020' : 'var(--green)', opacity: 1 }}>
-                          {z.exit === 'trail' ? 'TRAIL' : z.exit === 'tp1' ? '1:1' : '—'}
+                        <td className="text-right">
+                          {z.zone_candle_time != null ? (
+                            <button
+                              className="cursor-pointer bg-transparent p-0 text-[11px] underline decoration-dotted"
+                              style={{ color: ex.exit === 'trail' ? '#ffb020' : 'var(--green)' }}
+                              title={`${ex.mine ? 'Your exit' : 'Exit brain'}: ${ex.exit === 'trail' ? 'TRAIL' : '1:1'}${z.exit_bot ? ` (brain picked ${z.exit_bot === 'trail' ? 'TRAIL' : '1:1'})` : ''}. Click to switch.`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const to = ex.exit === 'trail' ? 'tp1' : 'trail'
+                                const back = z.exit_bot != null && to === z.exit_bot
+                                void sendControl(
+                                  back
+                                    ? { action: 'unexit', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction }
+                                    : { action: 'exit', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction, exit: to },
+                                  null,
+                                )
+                              }}
+                            >
+                              {ex.exit === 'trail' ? 'TRAIL' : '1:1'}{ex.mine ? '*' : ''}
+                            </button>
+                          ) : '—'}
                         </td>
                         <td className="text-right" style={{ color: st.color }}>{st.text}</td>
                         <td className="pl-1 text-right">
-                          {z.zone_candle_time != null && (
+                          {z.zone_candle_time != null && (taken || (takeable && !avoided)) && (
+                            <button
+                              className="chip !px-1.5 !py-0 text-[9px]"
+                              style={{ color: taken ? 'var(--red)' : 'var(--cyan)', borderColor: taken ? 'var(--red)' : 'var(--cyan)' }}
+                              title={taken ? 'Do NOT trade this zone (back to the bot decision: skip). You can switch again any time before the fill.' : 'Trade this zone even though the bot skips it (ML low / value area / quiet). Risk rules still apply. You can switch again any time before the fill.'}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                void sendControl(
+                                  { action: taken ? 'untake' : 'take', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction },
+                                  taken ? null : `Take this zone?\n\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))} (ML ${Math.round(z.score * 100)}%)\n\nThe bot skips it now (${st.text}). With TAKE it trades it if price reaches the entry. You can undo this.`,
+                                )
+                              }}
+                            >
+                              {taken ? 'AVOID' : 'TAKE'}
+                            </button>
+                          )}
+                          {z.zone_candle_time != null && !taken && !(takeable && !avoided) && (
                             <button
                               className="chip !px-1.5 !py-0 text-[9px]"
                               style={{ color: avoided ? 'var(--cyan)' : 'var(--red)', borderColor: avoided ? 'var(--cyan)' : 'var(--red)' }}
-                              title={avoided ? 'Allow the bot to trade this zone again' : 'Tell the bot NOT to trade this zone'}
+                              title={avoided ? 'Trade this zone again (back to the bot decision: take). You can switch again any time before the fill.' : 'Tell the bot NOT to trade this zone. You can switch again any time before the fill.'}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                const side = z.direction === 'bull' ? 'BUY' : 'SELL'
                                 void sendControl(
                                   { action: avoided ? 'unavoid' : 'avoid', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction },
                                   avoided ? null : `Avoid this zone?\n\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}\n\nThe bot will not trade it. You can undo this.`,
                                 )
                               }}
                             >
-                              {avoided ? 'UNDO' : 'AVOID'}
+                              {avoided ? 'TAKE' : 'AVOID'}
                             </button>
                           )}
                         </td>
@@ -559,10 +610,30 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                       <span style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'} {t.lots}</span>
                       {t.kind === 'orb'
                         ? <span className="text-[10px]" style={{ color: '#b388ff' }} title="ORB shadow trade (separate $10k account): TP 2R, SL other side of the range, closes 16:00 NY">ORB {t.range} · 1:2</span>
-                        : <span className="text-[10px]" style={{ color: t.exit === 'trail' ? '#ffb020' : 'var(--green)' }}>{t.exit === 'trail' ? 'TRAIL' : '1:1'}</span>}
+                        : <span className="text-[10px]" style={{ color: t.exit === 'trail' ? '#ffb020' : 'var(--green)' }} title={t.user_exit ? `Your exit (brain picked ${t.exit_bot === 'trail' ? 'TRAIL' : '1:1'})` : 'Exit brain'}>{t.exit === 'trail' ? 'TRAIL' : '1:1'}{t.user_exit ? '*' : ''}</span>}
+                      {t.kind !== 'orb' && t.fill_time != null && (exitPending(t)
+                        ? <span className="text-[9px]" style={{ color: 'var(--amber)' }}>SWITCHING...</span>
+                        : (
+                          <button
+                            className="chip !px-1.5 !py-0 text-[9px]"
+                            style={{ color: t.exit === 'trail' ? 'var(--green)' : '#ffb020', borderColor: t.exit === 'trail' ? 'var(--green)' : '#ffb020' }}
+                            title={t.exit === 'trail' ? 'Switch this trade to a fixed 1:1 target (if it is already above +1R it closes now)' : 'Switch this trade to TRAIL: no fixed target, stop follows price after +1R'}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const to = t.exit === 'trail' ? 'tp1' : 'trail'
+                              const above = to === 'tp1' && (t.r_now ?? 0) >= 1
+                              void sendControl(
+                                { action: 'trade_exit', symbol: t.symbol, fill_time: t.fill_time!, exit: to },
+                                above ? `This trade is already above +1R (${(t.r_now ?? 0).toFixed(2)}R).\n\nSwitching to 1:1 closes it NOW at the market price. Continue?` : null,
+                              )
+                            }}
+                          >
+                            {t.exit === 'trail' ? '→ 1:1' : '→ TRAIL'}
+                          </button>
+                        ))}
                       {fresh && <span className="text-[9px]" style={{ color: 'var(--cyan)' }}>NEW</span>}
                       <span className="ml-auto font-medium" style={{ color: col }}>{pl ? fmtUsd(pl.usd) : '—'}</span>
-                      {t.kind !== 'orb' && <CloseButton t={t} closing={isClosing(t)} pnl={pl ? fmtUsd(pl.usd) : null} />}
+                      <CloseButton t={t} closing={isClosing(t)} pnl={pl ? fmtUsd(pl.usd) : null} />
                     </div>
                     <div className="flex items-baseline gap-2 text-[10px] text-muted">
                       <span>{t.entry.toFixed(dg)} → {p ? (t.direction === 'bull' ? p.bid : p.ask).toFixed(dg) : '—'}</span>

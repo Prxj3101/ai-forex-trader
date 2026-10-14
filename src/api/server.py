@@ -511,6 +511,19 @@ def live_orb():
     return r
 
 
+@app.get("/api/live/weekly")
+def live_weekly():
+    """Weekend report (bot writes it every Saturday NY): your AVOID / TAKE / EXIT / CLOSE decisions vs the bot."""
+    from src.live import weekly_report
+    remote = _remote_cfg()
+    if remote is None:
+        return (weekly_report.latest(LIVE) or {"status": "none"}) | {"source": "local"}
+    r = _remote_get(remote, "/api/live/weekly", {})
+    if r.get("error", "").startswith("VPS error 404"):
+        r["error"] = "VPS live API is an old version: git pull + restart LIVE API on the VPS"
+    return r
+
+
 @app.get("/api/orb/backtest")
 def orb_backtest():
     """ORB backtest numbers (walk-forward 2019-26) for the ORB stats page: data/research/orb_backtest_stats.json."""
@@ -563,8 +576,8 @@ def orb_research_brain():
 
 @app.post("/api/live/control")
 def live_control(action: str, symbol: str, zone: int | None = None, direction: str | None = None,
-                 fill_time: int | None = None):
-    """Dashboard buttons: AVOID / UNDO zone, CLOSE khula shadow trade -> bot (VPS ya isi PC pe)."""
+                 fill_time: int | None = None, exit: str | None = None):  # noqa: A002
+    """Dashboard buttons: AVOID / TAKE / EXIT zone, EXIT / CLOSE zone trade, CLOSE ORB trade -> bot (VPS ya isi PC pe)."""
     import urllib.error
     import urllib.parse
     import urllib.request
@@ -573,12 +586,12 @@ def live_control(action: str, symbol: str, zone: int | None = None, direction: s
     remote = _remote_cfg()
     if remote is None:
         try:
-            c = control.apply(LIVE, action, symbol, zone=zone, direction=direction, fill_time=fill_time)
+            c = control.apply(LIVE, action, symbol, zone=zone, direction=direction, fill_time=fill_time, exit=exit)
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        return {"ok": True, "avoid": c["avoid"], "close": c["close"], "source": "local"}
+        return {"ok": True, **c, "source": "local"}
     params = {k: v for k, v in dict(action=action, symbol=symbol, zone=zone, direction=direction,
-                                     fill_time=fill_time).items() if v is not None}
+                                     fill_time=fill_time, exit=exit).items() if v is not None}
     url = remote["url"].rstrip("/") + "/api/live/control?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, method="POST", headers={"X-Live-Token": remote["token"]})
     try:
