@@ -9,6 +9,7 @@ MANUAL CONTROL: dashboard se tere haath ke buttons -> bot tak.
               turant market pe band (1R pe pehle hi TP hota).
   CLOSE     = khula zone shadow trade abhi market price pe band.
   ORB_CLOSE = khula ORB shadow trade abhi market price pe band (15 Oct).
+  EXEC_ON / EXEC_OFF (symbol = ZONE / ORB) = asli DEMO orders on / off (src/live/execution.py).
 
 Kaise: dashboard -> laptop backend -> VPS live_api (token ke saath) -> data/live/control.json likhta hai.
 Bot (shadow.py / orb.py) har ~1 sec is file ko dekhta hai aur command lagata hai.
@@ -42,7 +43,10 @@ def load(live: Path) -> dict:
         d = json.loads(p.read_text()) if p.exists() else {}
     except Exception:  # noqa: BLE001 - adhuri likhi file -> agli baar
         d = {}
-    return {k: list(d.get(k) or []) for k in ZONE_LISTS + CMD_LISTS}
+    out = {k: list(d.get(k) or []) for k in ZONE_LISTS + CMD_LISTS}
+    ex = d.get("exec") or {}
+    out["exec"] = {"zone": bool(ex.get("zone")), "orb": bool(ex.get("orb"))}   # real DEMO orders (execution.py)
+    return out
 
 
 def avoid_key(symbol: str, zone: int, direction: str) -> tuple:
@@ -88,6 +92,11 @@ def apply(live: Path, action: str, symbol: str, zone: int | None = None, directi
                 c["take"] = [a for a in c["take"] if zone_key(a["symbol"], a["zone"], a["direction"]) != key]
             if base == "take" and not action.startswith("un"):
                 c["avoid"] = [a for a in c["avoid"] if zone_key(a["symbol"], a["zone"], a["direction"]) != key]
+        elif action in ("exec_on", "exec_off"):
+            strat = symbol.lower()
+            if strat not in ("zone", "orb"):
+                raise ValueError("strategy must be ZONE or ORB")
+            c["exec"][strat] = action == "exec_on"
         elif action in CMD_LISTS:
             _check(symbol)
             if fill_time is None:

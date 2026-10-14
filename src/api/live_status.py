@@ -124,7 +124,8 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
             out["open"] = [{"direction": t.get("direction"), "entry": clean(t.get("entry")), "sl": clean(t.get("sl")),
                             "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")), "best_r": clean(t.get("best_r")),
                             "exit": t.get("exit"), "lots": clean(t.get("lots")), "r_now": clean(t.get("r_now")),
-                            "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
+                            "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None,
+                            "zone": to_unix(pd.Timestamp(t["zone"])) if t.get("zone") else None}
                            for t in st.get("open_trades", []) if t.get("symbol") == symbol]
         except Exception:  # noqa: BLE001
             pass
@@ -171,6 +172,14 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
     except Exception:  # noqa: BLE001
         pass
     out["open"] = [dict(t, kind="zone") for t in out["open"]] + _orb_open_rows(live, symbol)
+    ex = _exec_status(live)                                  # real DEMO entry price per open trade (chart line)
+    if ex:
+        lk = ex.get("links") or {}
+        for t in out["open"]:
+            r = (lk.get("orb") or {}).get(f"{symbol}|{t.get('fill_time')}") if t.get("kind") == "orb" \
+                else (lk.get("zone") or {}).get(f"{symbol}|{t.get('zone')}|{t.get('direction')}")
+            if r and r.get("real_entry") is not None:
+                t["real_entry"] = r["real_entry"]
     out["trades"] = [dict(t, kind="zone") for t in out["trades"]] + _orb_closed_rows(live, symbol)
     out["orb"] = chart_orb(live, symbol)                 # ORB dabbe (src/live/orb.py)
     return out
@@ -273,12 +282,61 @@ def build_ticks(live: Path) -> dict:
                             "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")),
                             "best_r": clean(t.get("best_r")), "r_now": clean(t.get("r_now")),
                             "filled_at": to_unix(pd.Timestamp(t["filled_at"])) if t.get("filled_at") else None,
-                            "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
+                            "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None,
+                            "zone": to_unix(pd.Timestamp(t["zone"])) if t.get("zone") else None}
                            for t in st.get("open_trades", [])]
         except Exception:  # noqa: BLE001
             pass
     out["open"] = [dict(t, kind="zone") for t in out["open"]] + _orb_open_rows(live)   # ORB trades bhi (alag account)
+    out["exec"] = _exec_status(live)
+    if out["exec"]:                                  # real DEMO order per open trade (shadow vs real)
+        links = out["exec"].get("links") or {}
+        for t in out["open"]:
+            if t.get("kind") == "orb":
+                k = f"{t['symbol']}|{t.get('fill_time')}"
+                r = (links.get("orb") or {}).get(k)
+            else:
+                k = f"{t['symbol']}|{t.get('zone')}|{t.get('direction')}"
+                r = (links.get("zone") or {}).get(k)
+            if r:
+                t["real"] = r
     return out
+
+
+def _exec_status(live: Path) -> dict | None:
+    """data/live/exec_status.json (src/live/execution.py): switches, DEMO account, real positions / orders, errors."""
+    f = live / "exec_status.json"
+    if not f.exists():
+        return None
+    try:
+        st = json.loads(f.read_text())
+        st["age_sec"] = round((pd.Timestamp.now(tz="UTC") - pd.Timestamp(st["updated"])).total_seconds(), 1)
+        return st
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def build_real(live: Path, n: int = 30) -> dict:
+    """REAL vs SHADOW (real_trades.csv): per strategy totals + last trades."""
+    f = live / "real_trades.csv"
+    if not f.exists():
+        return {"strategies": {}, "trades": []}
+    try:
+        d = pd.read_csv(f)
+    except Exception:  # noqa: BLE001
+        return {"strategies": {}, "trades": []}
+    out = {}
+    for s_, g in d.groupby("strategy"):
+        rr, sr = g["real_r"].dropna(), g["shadow_r"].dropna()
+        out[s_] = dict(trades=int(len(g)), real_r=round(float(rr.sum()), 2), shadow_r=round(float(sr.sum()), 2),
+                       r_gap=round(float((g["real_r"] - g["shadow_r"]).dropna().mean()), 3) if len(rr) and len(sr) else None,
+                       avg_entry_slip_pips=round(float(g["entry_slip_pips"].dropna().mean()), 2) if g["entry_slip_pips"].notna().any() else None,
+                       net_usd=round(float(g["net_usd"].dropna().sum()), 2), commission_usd=round(float(g["commission_usd"].dropna().sum()), 2),
+                       wins=int((g["net_usd"] > 0).sum()))
+    cols = ["strategy", "symbol", "direction", "shadow_entry", "real_entry", "entry_slip_pips", "shadow_r", "real_r",
+            "real_exit_reason", "net_usd", "real_exit_time", "note"]
+    tail = d.tail(n).iloc[::-1][cols].astype(object).where(lambda x: x.notna(), None).to_dict("records")
+    return {"strategies": out, "trades": tail}
 
 
 def _zone_from_candle(m5, zt: pd.Timestamp, t: dict) -> dict | None:
@@ -437,6 +495,7 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
         out["whatif"] = sorted(rows, key=lambda x: -x["zones"])
     else:
         out["whatif"] = []
+    out["real"] = build_real(live)
     return out
 
 

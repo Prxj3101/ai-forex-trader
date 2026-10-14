@@ -163,6 +163,7 @@ class OrbEngine:
                  risk_pct: float = 0.4, resume: bool = True, write_view: bool = True, news_guard=None):
         self.feed, self.log, self.out, self.write_view = feed, log, out_dir, write_view
         self.news = news_guard          # 15 Oct: NEWS BLOCK -5/+20 min (config.NEWS_BLOCK_*), same as zone bot
+        self.exec = None                # 15 Oct: src/live/execution.Executor (real DEMO orders) - set by run_live
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = OrbBrain()
         self.q30 = self.brain.meta["tight_q30"]
@@ -333,6 +334,11 @@ class OrbEngine:
                   fill_time=pd.Timestamp(ms, unit="ms", tz="UTC").isoformat(timespec="seconds"))
         te.init_state(tr, ms)
         self.open.append(tr)
+        if self.exec is not None:                      # real DEMO market order (if ORB execution is ON)
+            try:
+                self.exec.on_orb_open(tr)
+            except Exception as e:  # noqa: BLE001 - real order problem must not stop the shadow
+                self.log(f"ORB exec open error: {e.__class__.__name__}: {e}")
         self.traded.add(dk)
         self._final(rec, "traded", f"{side} {lots:.2f} lots @ {entry}, SL {sl}, TP {tr['tp']:.5f}, ML {s:.3f}")
         self.log(f"ORB TRADE {rec['symbol']} {rec['range']} {side} @ {entry} SL {sl} TP {tr['tp']:.5f} "
@@ -419,6 +425,11 @@ class OrbEngine:
 
     def _close(self, t: dict, r: float, why: str, ms: int):
         sym = t["symbol"]
+        if self.exec is not None:                      # real DEMO position: close too (if still open at the broker)
+            try:
+                self.exec.on_orb_close(t, r, why)
+            except Exception as e:  # noqa: BLE001
+                self.log(f"ORB exec close error: {e.__class__.__name__}: {e}")
         slip = 0.0
         if why == "sl":
             sp = SLIP_PIPS * PIP[sym]

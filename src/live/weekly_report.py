@@ -124,6 +124,19 @@ def build(live: Path = LIVE, days: int = 7, end: pd.Timestamp | None = None) -> 
     o_w = wk(orb, "exit_time")
     rep["orb_account"] = _box(col(o_w, "r")) | dict(pnl_usd=round(float(col(o_w, "pnl").sum()), 2),
                                                      manual_closes=int((col(o_w, "exit_reason") == "manual").sum()))
+    rt = _read(live / "real_trades.csv")                     # REAL DEMO orders vs shadow (src/live/execution.py)
+
+    def real_box(d):
+        out = {}
+        if d.empty or "strategy" not in d:
+            return out
+        for st, g in d.groupby("strategy"):
+            out[st] = dict(n=int(len(g)), real_R=round(float(g["real_r"].dropna().sum()), 2),
+                           shadow_R=round(float(g["shadow_r"].dropna().sum()), 2), net_usd=round(float(g["net_usd"].dropna().sum()), 2),
+                           avg_slip_pips=round(float(g["entry_slip_pips"].dropna().mean()), 2) if g["entry_slip_pips"].notna().any() else None)
+        return out
+    rep["real_week"] = real_box(wk(rt, "real_exit_time"))
+    rep["real_all_time"] = real_box(rt)
     a_w = wk(acts, "at")
     rep["your_actions_week"] = a_w["kind"].value_counts().to_dict() if "kind" in a_w else {}
     rep["your_actions_total"] = acts["kind"].value_counts().to_dict() if "kind" in acts else {}
@@ -157,6 +170,9 @@ def text(rep: dict) -> str:
             L.append(f"  your manual CLOSEs     {c['n']:4d}  -> {c['R_gained']:+.2f}R vs letting them run")
     oa = rep["orb_account"]
     L.append(f"ORB account: {oa['n']} closed trades, R {oa['R']:+.2f}, PF {oa['pf']}, ${oa['pnl_usd']:+,.2f}, manual closes {oa['manual_closes']}")
+    for st, v in (rep.get("real_week") or {}).items():
+        L.append(f"REAL DEMO {st.upper()}: {v['n']} trades, real R {v['real_R']:+.2f} vs shadow R {v['shadow_R']:+.2f}, "
+                 f"net ${v['net_usd']:+,.2f}, avg entry slippage {v['avg_slip_pips']} pips")
     L.append(f"Your actions this week: {rep['your_actions_week']}")
     return "\n".join(L)
 

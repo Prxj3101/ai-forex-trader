@@ -14,7 +14,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, type LiveChart, type LiveStatus, type LiveTickTrade, type LiveTicks, type LiveWatchZone, type Zone } from '../lib/api'
+import { api, type ExecStatus, type LiveChart, type LiveStatus, type LiveTickTrade, type LiveTicks, type LiveWatchZone, type Zone } from '../lib/api'
 import { floatPnl, fmtFill, fmtFillShort, fmtSigned, fmtUsd } from '../lib/pnl'
 import ControlButton from './ControlButton'
 import { useNow } from '../lib/hooks'
@@ -262,6 +262,9 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
       if (t.stop_now != null && Math.abs(t.stop_now - t.sl) > 1e-9) {
         segs.push({ t1: t.fill_time, t2: null, price: t.stop_now, color: AMBER, width: 2, label: `TRAIL SL (best +${(t.best_r ?? 0).toFixed(1)}R)` })
       }
+      if (t.real_entry != null) {                 // asli DEMO fill (shadow entry se kitna alag)
+        segs.push({ t1: t.fill_time, t2: null, price: t.real_entry, color: '#e6e6e6', dash: true, width: 1, label: `REAL ${t.real_entry.toFixed(digitsOf(symbol))}` })
+      }
     }
     for (const t of data.trades) {
       const risk = Math.abs(t.entry - t.sl)
@@ -369,6 +372,48 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
   )
 }
 
+/** REAL DEMO ORDERS bar: ZONE / ORB switches (confirm box), MT5 account, last error. */
+function ExecBar({ ex }: { ex: ExecStatus | null }) {
+  if (!ex) {
+    return <div className="mb-2 text-[10px] text-muted">REAL DEMO ORDERS: waiting for the bot (needs the new bot version on the VPS).</div>
+  }
+  const stale = (ex.age_sec ?? 0) > 60
+  const a = ex.account ?? {}
+  const sw = (k: 'zone' | 'orb', name: string) => {
+    const on = !!ex.switch?.[k]
+    return (
+      <ControlButton
+        className="chip !px-2 !py-0 text-[10px]"
+        style={{ color: on ? 'var(--green)' : 'var(--muted)', borderColor: on ? 'var(--green)' : 'var(--line)' }}
+        title={on ? `${name}: real DEMO orders are ON. Click to turn OFF.` : `${name}: only shadow (no real orders). Click to turn ON.`}
+        control={{ action: on ? 'exec_off' : 'exec_on', symbol: k === 'zone' ? 'ZONE' : 'ORB' }}
+        question={on
+          ? `Turn OFF real DEMO orders for ${name}?\nNo new real orders${k === 'zone' ? ' and pending limit orders are cancelled' : ''}. Open real trades are still managed until they close. Shadow keeps running.`
+          : `Turn ON real DEMO orders for ${name}?\nFrom now on every new ${name} trade is also sent to MT5 (${a.server ?? 'demo'}${a.login ? ` #${a.login}` : ''}) with the normal lot size. Trades already open stay shadow only.`}
+        confirmText={on ? 'TURN OFF' : 'TURN ON'}
+      >
+        {name} {on ? '● ON' : '○ OFF'}
+      </ControlButton>
+    )
+  }
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px]" style={{ opacity: stale ? 0.6 : 1 }}>
+      <span className="tracking-[2px] text-muted" title="Real orders on the MT5 DEMO account (shadow trades keep running next to them)">REAL DEMO ORDERS</span>
+      {sw('zone', 'ZONE BOT')}
+      {sw('orb', 'ORB')}
+      <span className={ex.demo ? 'text-muted' : ''} style={ex.demo ? undefined : { color: 'var(--red)' }}>
+        {ex.demo ? `MT5 DEMO${a.login ? ` #${a.login}` : ''}` : 'NOT A DEMO ACCOUNT - no real orders'}
+      </span>
+      {a.balance != null && <span className="text-muted">BAL ${a.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} · EQ ${(a.equity ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>}
+      <span className="text-muted">{ex.positions?.length ?? 0} real open · {ex.orders?.length ?? 0} pending</span>
+      {stale && <span style={{ color: 'var(--amber)' }}>status {Math.round(ex.age_sec ?? 0)}s old</span>}
+      {ex.errors?.length > 0 && (
+        <span className="max-w-[420px] truncate" style={{ color: 'var(--amber)' }} title={ex.errors.join('\n')}>last: {ex.errors[ex.errors.length - 1]}</span>
+      )}
+    </div>
+  )
+}
+
 /** CLOSE button: khula shadow trade abhi market price pe band (bot ~1 s mein karta hai). */
 export function CloseButton({ t, closing, pnl }: { t: LiveTickTrade; closing: boolean; pnl: string | null }) {
   if (t.fill_time == null) return null
@@ -440,6 +485,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
         <span>LIVE MARKET</span>
         <em title="Candles come from the bot's own MT5 broker feed on the VPS, not from the historical data on this PC">BROKER FEED · ZONES THE BOT IS WATCHING · NEWS</em>
       </div>
+      <ExecBar ex={ticks?.exec ?? null} />
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_410px]">
         <div className="min-w-0">
@@ -527,7 +573,16 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                             </ControlButton>
                           ) : '—'}
                         </td>
-                        <td className="text-right" style={{ color: st.color }}>{st.text}</td>
+                        <td className="text-right" style={{ color: st.color }}>
+                          {st.text}
+                          {(() => {
+                            const rl = ticks?.exec?.links?.zone?.[`${z.symbol}|${z.zone_candle_time}|${z.direction}`]
+                            if (!rl) return null
+                            if (rl.status === 'pending') return <span className="ml-1 text-[9px]" style={{ color: 'var(--cyan)' }} title={`Real DEMO limit order is placed on MT5 (order ${rl.order})`}>· MT5</span>
+                            if (rl.status === 'failed') return <span className="ml-1 text-[9px]" style={{ color: 'var(--red)' }} title={`Real order failed: ${rl.error}`}>· ORDER FAILED</span>
+                            return null
+                          })()}
+                        </td>
                         <td className="pl-1 text-right">
                           {z.zone_candle_time != null && (taken || (takeable && !avoided)) && (
                             <ControlButton
@@ -619,6 +674,22 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                       <span className="ml-auto font-medium" style={{ color: col }}>{pl ? fmtUsd(pl.usd) : '—'}</span>
                       <CloseButton t={t} closing={isClosing(t)} pnl={pl ? fmtUsd(pl.usd) : null} />
                     </div>
+                    {(() => {
+                      const on = t.kind === 'orb' ? ticks?.exec?.switch?.orb : ticks?.exec?.switch?.zone
+                      if (t.real?.status === 'failed') return <div className="text-[10px]" style={{ color: 'var(--red)' }} title={t.real.error ?? ''}>REAL ORDER FAILED: {t.real.error}</div>
+                      if (t.real?.real_entry != null) {
+                        const sl = t.real.entry_slip_pips
+                        return (
+                          <div className="text-[10px]" title="Real DEMO position on MT5 (shadow trade above). Slippage + = real fill worse than the shadow.">
+                            <span style={{ color: '#e6e6e6' }}>REAL {t.real.real_entry.toFixed(dg)}</span>
+                            {sl != null && <span className="ml-2" style={{ color: sl > 0 ? 'var(--red)' : 'var(--green)' }}>slip {sl > 0 ? '+' : ''}{sl.toFixed(1)} pips</span>}
+                            {t.real.position != null && <span className="ml-2 text-muted">#{t.real.position}</span>}
+                          </div>
+                        )
+                      }
+                      if (t.real?.status === 'pending') return <div className="text-[10px] text-muted">REAL: limit order waiting on MT5</div>
+                      return on ? <div className="text-[10px]" style={{ color: 'var(--amber)' }} title="Execution is ON but this trade has no real position (opened before ON, or the broker did not fill)">SHADOW ONLY</div> : null
+                    })()}
                     <div className="flex items-baseline gap-2 text-[10px] text-muted">
                       <span>{t.entry.toFixed(dg)} → {p ? (t.direction === 'bull' ? p.bid : p.ask).toFixed(dg) : '—'}</span>
                       <span>{fmtFillShort(t)} NY</span>

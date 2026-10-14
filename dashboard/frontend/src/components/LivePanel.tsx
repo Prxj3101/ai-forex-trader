@@ -6,6 +6,7 @@ import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
 import LiveMarketPanel, { CloseButton } from './LiveMarketPanel'
 import WeeklyReportPanel from './WeeklyReportPanel'
+import RealVsShadowPanel from './RealVsShadowPanel'
 
 /*
   LIVE SHADOW ACCOUNT: shadow bot (src/live/shadow.py) jo files likhta hai, unka live view.
@@ -536,6 +537,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         </div>
       </div>
 
+      <RealVsShadowPanel real={data.real} />
       <WeeklyReportPanel connected={connected} />
       <BotLog lines={data.log ?? []} />
     </div>

@@ -422,6 +422,25 @@ export type LiveTicks = {
   close_pending?: { symbol: string; fill_time: number }[]
   exit_pending?: { symbol: string; fill_time: number; exit: 'tp1' | 'trail' }[]
   orb_close_pending?: { symbol: string; fill_time: number }[]
+  exec?: ExecStatus | null
+}
+
+// REAL DEMO orders (src/live/execution.py -> data/live/exec_status.json)
+export type RealLink = { status: string; order?: number | null; position?: number | null; real_entry?: number | null; entry_slip_pips?: number | null; error?: string | null }
+export type ExecStatus = {
+  updated: string
+  age_sec?: number
+  switch: { zone: boolean; orb: boolean }
+  demo: boolean
+  account: { login?: number; server?: string; demo?: boolean; balance?: number; equity?: number; margin_free?: number; currency?: string }
+  positions: { strategy: string; ticket: number; symbol: string; buy: boolean; lots: number; price_open: number; sl: number; tp: number; profit: number }[]
+  orders: { strategy: string; ticket: number; symbol: string; price: number; sl: number; tp: number; lots: number }[]
+  links: { zone?: Record<string, RealLink>; orb?: Record<string, RealLink> }
+  errors: string[]
+}
+export type RealSummary = {
+  strategies: Record<string, { trades: number; real_r: number; shadow_r: number; r_gap: number | null; avg_entry_slip_pips: number | null; net_usd: number; commission_usd: number; wins: number }>
+  trades: { strategy: string; symbol: string; direction: string; shadow_entry: number | null; real_entry: number | null; entry_slip_pips: number | null; shadow_r: number | null; real_r: number | null; real_exit_reason: string | null; net_usd: number | null; real_exit_time: string | null; note: string | null }[]
 }
 
 export type WeeklyBox = { n: number; R: number; pf: number | null; win_pct: number | null; note?: string }
@@ -444,6 +463,7 @@ export type WeeklyReport = {
   zone_week?: WeeklyScope
   zone_all_time?: WeeklyScope
   your_actions_week?: Record<string, number>
+  real_week?: Record<string, { n: number; real_R: number; shadow_R: number; net_usd: number; avg_slip_pips: number | null }>
   text?: string
   history?: string[]
 }
@@ -453,6 +473,7 @@ export type LiveControl =
   | { action: 'exit'; symbol: string; zone: number; direction: 'bull' | 'bear'; exit: 'tp1' | 'trail' }
   | { action: 'close' | 'orb_close'; symbol: string; fill_time: number }
   | { action: 'trade_exit'; symbol: string; fill_time: number; exit: 'tp1' | 'trail' }
+  | { action: 'exec_on' | 'exec_off'; symbol: 'ZONE' | 'ORB' }
 
 export type LiveTickTrade = {
   symbol: string
@@ -474,6 +495,8 @@ export type LiveTickTrade = {
   exit_bot?: string | null       // exit brain's choice (exit = yours if you changed it)
   user_exit?: string             // '' = brain's choice
   taken_manual?: boolean         // you pressed TAKE on this zone
+  zone?: number | null
+  real?: RealLink                // real DEMO order of this trade (if execution is ON)
   range?: string | null          // ORB range (ASIA / LON30 / LON60)
   risk_usd?: number | null
 }
@@ -590,6 +613,8 @@ export type LiveChart = {
     fill_time: number | null
     kind?: 'zone' | 'orb'
     range?: string | null
+    zone?: number | null
+    real_entry?: number | null     // real DEMO fill price (src/live/execution.py)
   }[]
   trades: {
     direction: 'bull' | 'bear'; entry: number; sl: number; exit: string; r: number; exit_reason: string; pnl: number; fill_ts: number; exit_ts: number
@@ -614,6 +639,7 @@ export type LiveChart = {
 
 export type LiveStatus = {
   status: 'running' | 'stopped' | 'none' | 'unreachable' | 'market_closed'
+  real?: RealSummary
   health?: LiveHealth | null
   log?: string[]
   watch?: LiveWatch | null

@@ -897,10 +897,19 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
         print(f"news: {len(guard.events)} high-impact events this week, block {config.NEWS_BLOCK_BEFORE_MIN} min before "
               f"to {config.NEWS_BLOCK_AFTER_MIN} min after" if config.NEWS_BLOCK else "news: prop rules only")
     eng = ShadowEngine(feed, news_guard=guard, resume=True)
+    ex = None
+    try:                                         # REAL DEMO orders (src/live/execution.py): switches on the dashboard
+        from src.live.execution import Executor, MT5Broker
+        ex = Executor(MT5Broker(feed.mt5, log=print), LIVE, log=print)
+        print(f"execution: zone {'ON' if ex.switch['zone'] else 'OFF'}, orb {'ON' if ex.switch['orb'] else 'OFF'}, "
+              f"account {'DEMO' if ex.demo_ok else 'NOT DEMO (no orders)'}")
+    except Exception as e:  # noqa: BLE001 - execution problem: shadow keeps running
+        print(f"execution off: {e.__class__.__name__}: {e}")
     orb = None
     try:                                         # ORB shadow (src/live/orb.py): alag virtual account, zone bot pe asar nahi
         from src.live.orb import OrbEngine
         orb = OrbEngine(feed, resume=True, news_guard=guard)
+        orb.exec = ex
     except Exception as e:  # noqa: BLE001 - ORB na chale toh bhi zone bot chalta rahe
         print(f"ORB off: {e.__class__.__name__}: {e}")
     last = {}
@@ -942,8 +951,17 @@ def run_live(poll_s: float = 1.0, health_every_s: float = 5.0):
                         orb.save()
                 except Exception as e:  # noqa: BLE001
                     print(f"ORB step error: {e.__class__.__name__}: {e}")
+            if ex is not None:                                         # REAL DEMO orders follow the shadow
+                try:
+                    ex.refresh_switch()
+                    ex.sync_zone(eng)
+                    ex.sync_orb()
+                except Exception as e:  # noqa: BLE001
+                    print(f"execution error: {e.__class__.__name__}: {e}")
             if time.time() - last_health >= health_every_s:
                 monitor.write_health(feed, eng, LIVE, started_at, guard)   # dashboard: MT5 / VPS sehat (har ~5 s)
+                if ex is not None:
+                    ex.write_status()                                  # dashboard: switches, account, real positions
                 last_health = time.time()
             if time.time() - last_week >= 60:                          # Saturday (NY): weekend report (once)
                 last_week = time.time()
