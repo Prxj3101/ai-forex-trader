@@ -15,7 +15,8 @@ import {
 } from 'lightweight-charts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type LiveChart, type LiveStatus, type LiveTickTrade, type LiveTicks, type LiveWatchZone, type Zone } from '../lib/api'
-import { floatPnl, fmtFill, fmtFillShort, fmtSigned, fmtUsd, sendControl } from '../lib/pnl'
+import { floatPnl, fmtFill, fmtFillShort, fmtSigned, fmtUsd } from '../lib/pnl'
+import ControlButton from './ControlButton'
 import { useNow } from '../lib/hooks'
 import { NY, fmtTick, fmtTs } from '../lib/time'
 import { type Segment, SegmentsPrimitive } from '../lib/segmentsPrimitive'
@@ -374,21 +375,16 @@ export function CloseButton({ t, closing, pnl }: { t: LiveTickTrade; closing: bo
   const orb = t.kind === 'orb'
   if (closing) return <span className="text-[9px]" style={{ color: 'var(--amber)' }}>CLOSING...</span>
   return (
-    <button
+    <ControlButton
       className="chip !px-1.5 !py-0 text-[9px]"
       style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
       title="Close this shadow trade now at the market price"
-      onClick={(e) => {
-        e.stopPropagation()
-        const side = t.direction === 'bull' ? 'BUY' : 'SELL'
-        void sendControl(
-          { action: orb ? 'orb_close' : 'close', symbol: t.symbol, fill_time: t.fill_time! },
-          `Close this ${orb ? 'ORB ' : ''}trade now at the market price?\n\n${t.symbol} ${side} ${t.lots} lots at ${t.entry}${pnl ? `\nRight now: ${pnl}` : ''}\n\nThis cannot be undone.`,
-        )
-      }}
+      control={{ action: orb ? 'orb_close' : 'close', symbol: t.symbol, fill_time: t.fill_time! }}
+      question={`Close this ${orb ? 'ORB ' : ''}trade now at the market price?\n${t.symbol} ${t.direction === 'bull' ? 'BUY' : 'SELL'} ${t.lots} lots at ${t.entry}${pnl ? ` · now ${pnl}` : ''}\nThis cannot be undone.`}
+      confirmText="CLOSE NOW"
     >
       CLOSE
-    </button>
+    </ControlButton>
   )
 }
 
@@ -517,59 +513,49 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                         <td className="text-right" style={{ color: z.score >= (data?.watch?.threshold ?? 1) ? 'var(--green)' : 'var(--muted)' }}>{Math.round(z.score * 100)}%</td>
                         <td className="text-right">
                           {z.zone_candle_time != null ? (
-                            <button
+                            <ControlButton
                               className="cursor-pointer bg-transparent p-0 text-[11px] underline decoration-dotted"
                               style={{ color: ex.exit === 'trail' ? '#ffb020' : 'var(--green)' }}
                               title={`${ex.mine ? 'Your exit' : 'Exit brain'}: ${ex.exit === 'trail' ? 'TRAIL' : '1:1'}${z.exit_bot ? ` (brain picked ${z.exit_bot === 'trail' ? 'TRAIL' : '1:1'})` : ''}. Click to switch.`}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                const to = ex.exit === 'trail' ? 'tp1' : 'trail'
-                                const back = z.exit_bot != null && to === z.exit_bot
-                                void sendControl(
-                                  back
-                                    ? { action: 'unexit', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction }
-                                    : { action: 'exit', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction, exit: to },
-                                  null,
-                                )
-                              }}
+                              control={z.exit_bot != null && (ex.exit === 'trail' ? 'tp1' : 'trail') === z.exit_bot
+                                ? { action: 'unexit', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction }
+                                : { action: 'exit', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction, exit: ex.exit === 'trail' ? 'tp1' : 'trail' }}
+                              question={`Switch the exit to ${ex.exit === 'trail' ? '1:1 (fixed target at 1R)' : 'TRAIL (stop follows price after +1R)'}?\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}${z.exit_bot ? ` · brain picked ${z.exit_bot === 'trail' ? 'TRAIL' : '1:1'}` : ''}\nYou can switch again any time.`}
+                              confirmText={ex.exit === 'trail' ? 'SET 1:1' : 'SET TRAIL'}
                             >
                               {ex.exit === 'trail' ? 'TRAIL' : '1:1'}{ex.mine ? '*' : ''}
-                            </button>
+                            </ControlButton>
                           ) : '—'}
                         </td>
                         <td className="text-right" style={{ color: st.color }}>{st.text}</td>
                         <td className="pl-1 text-right">
                           {z.zone_candle_time != null && (taken || (takeable && !avoided)) && (
-                            <button
+                            <ControlButton
                               className="chip !px-1.5 !py-0 text-[9px]"
                               style={{ color: taken ? 'var(--red)' : 'var(--cyan)', borderColor: taken ? 'var(--red)' : 'var(--cyan)' }}
                               title={taken ? 'Do NOT trade this zone (back to the bot decision: skip). You can switch again any time before the fill.' : 'Trade this zone even though the bot skips it (ML low / value area / quiet). Risk rules still apply. You can switch again any time before the fill.'}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                void sendControl(
-                                  { action: taken ? 'untake' : 'take', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction },
-                                  taken ? null : `Take this zone?\n\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))} (ML ${Math.round(z.score * 100)}%)\n\nThe bot skips it now (${st.text}). With TAKE it trades it if price reaches the entry. You can undo this.`,
-                                )
-                              }}
+                              control={{ action: taken ? 'untake' : 'take', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction }}
+                              question={taken
+                                ? `Avoid this zone?\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}\nBack to the bot decision: it will NOT trade it. You can switch again.`
+                                : `Take this zone?\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))} · ML ${Math.round(z.score * 100)}%\nThe bot skips it (${STATUS[z.status]?.text ?? z.status}). With TAKE it trades it when price reaches the entry. You can switch again.`}
+                              confirmText={taken ? 'AVOID' : 'TAKE'}
                             >
                               {taken ? 'AVOID' : 'TAKE'}
-                            </button>
+                            </ControlButton>
                           )}
                           {z.zone_candle_time != null && !taken && !(takeable && !avoided) && (
-                            <button
+                            <ControlButton
                               className="chip !px-1.5 !py-0 text-[9px]"
                               style={{ color: avoided ? 'var(--cyan)' : 'var(--red)', borderColor: avoided ? 'var(--cyan)' : 'var(--red)' }}
                               title={avoided ? 'Trade this zone again (back to the bot decision: take). You can switch again any time before the fill.' : 'Tell the bot NOT to trade this zone. You can switch again any time before the fill.'}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                void sendControl(
-                                  { action: avoided ? 'unavoid' : 'avoid', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction },
-                                  avoided ? null : `Avoid this zone?\n\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}\n\nThe bot will not trade it. You can undo this.`,
-                                )
-                              }}
+                              control={{ action: avoided ? 'unavoid' : 'avoid', symbol: z.symbol, zone: z.zone_candle_time!, direction: z.direction }}
+                              question={avoided
+                                ? `Take this zone again?\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}\nBack to the bot decision: it trades it when price reaches the entry. You can switch again.`
+                                : `Avoid this zone?\n${z.symbol} ${side} at ${z.entry.toFixed(digitsOf(z.symbol))}\nThe bot will not trade it. You can switch again.`}
+                              confirmText={avoided ? 'TAKE' : 'AVOID'}
                             >
                               {avoided ? 'TAKE' : 'AVOID'}
-                            </button>
+                            </ControlButton>
                           )}
                         </td>
                       </tr>
@@ -614,22 +600,20 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                       {t.kind !== 'orb' && t.fill_time != null && (exitPending(t)
                         ? <span className="text-[9px]" style={{ color: 'var(--amber)' }}>SWITCHING...</span>
                         : (
-                          <button
+                          <ControlButton
                             className="chip !px-1.5 !py-0 text-[9px]"
                             style={{ color: t.exit === 'trail' ? 'var(--green)' : '#ffb020', borderColor: t.exit === 'trail' ? 'var(--green)' : '#ffb020' }}
                             title={t.exit === 'trail' ? 'Switch this trade to a fixed 1:1 target (if it is already above +1R it closes now)' : 'Switch this trade to TRAIL: no fixed target, stop follows price after +1R'}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const to = t.exit === 'trail' ? 'tp1' : 'trail'
-                              const above = to === 'tp1' && (t.r_now ?? 0) >= 1
-                              void sendControl(
-                                { action: 'trade_exit', symbol: t.symbol, fill_time: t.fill_time!, exit: to },
-                                above ? `This trade is already above +1R (${(t.r_now ?? 0).toFixed(2)}R).\n\nSwitching to 1:1 closes it NOW at the market price. Continue?` : null,
-                              )
-                            }}
+                            control={{ action: 'trade_exit', symbol: t.symbol, fill_time: t.fill_time!, exit: t.exit === 'trail' ? 'tp1' : 'trail' }}
+                            question={t.exit === 'trail'
+                              ? ((t.r_now ?? 0) >= 1
+                                ? `This trade is already above +1R (${(t.r_now ?? 0).toFixed(2)}R).\nSwitching to 1:1 closes it NOW at the market price.`
+                                : `Switch this trade to 1:1?\n${t.symbol} · fixed target at +1R from now on. You can switch again.`)
+                              : `Switch this trade to TRAIL?\n${t.symbol} · no fixed target, the stop follows price after +1R. You can switch again.`}
+                            confirmText={t.exit === 'trail' ? ((t.r_now ?? 0) >= 1 ? 'CLOSE AT 1:1' : 'SET 1:1') : 'SET TRAIL'}
                           >
                             {t.exit === 'trail' ? '→ 1:1' : '→ TRAIL'}
-                          </button>
+                          </ControlButton>
                         ))}
                       {fresh && <span className="text-[9px]" style={{ color: 'var(--cyan)' }}>NEW</span>}
                       <span className="ml-auto font-medium" style={{ color: col }}>{pl ? fmtUsd(pl.usd) : '—'}</span>

@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api, type LiveControl, type LiveTicks } from './api'
 
-/** Dashboard button -> bot (AVOID / UNDO / CLOSE). Pehle confirm poochta hai. true = bheja gaya. */
-export async function sendControl(c: LiveControl, question: string | null): Promise<boolean> {
-  if (question && !window.confirm(question)) return false
+/** Dashboard button -> bot (AVOID / TAKE / EXIT / CLOSE). Confirm box = components/ControlButton. null = sent, else error text. */
+export async function sendControl(c: LiveControl): Promise<string | null> {
   try {
     await api.liveControl(c)
-    return true
+    return null
   } catch (e) {
-    window.alert(`Could not send the command: ${e instanceof Error ? e.message : String(e)}`)
-    return false
+    return e instanceof Error ? e.message : String(e)
   }
 }
 
