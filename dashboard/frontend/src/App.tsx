@@ -7,6 +7,7 @@ import Header from './components/Header'
 import LivePanel from './components/LivePanel'
 import MLBrain from './components/MLBrain'
 import OrbPanel from './components/OrbPanel'
+import RealAccountPanel from './components/RealAccountPanel'
 import OrbResearchView from './components/OrbResearchView'
 import Pipeline from './components/Pipeline'
 import ResearchPanel from './components/ResearchPanel'
@@ -233,6 +234,7 @@ export default function App() {
           <>
             <LivePanel connected={connected} />
             <OrbPanel connected={connected} />
+            <RealAccountPanel connected={connected} />
             <div className="grid gap-2.5 xl:grid-cols-[300px_minmax(0,1fr)]">
               <SessionRadar />
             </div>

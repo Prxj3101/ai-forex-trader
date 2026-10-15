@@ -30,7 +30,7 @@ class FakeBroker:
 
     def place_limit(self, symbol, bull, price, sl, tp, lots, magic, comment):
         t = next(self._id)
-        self._orders[t] = NS(ticket=t, symbol=symbol, bull=bull, price_open=price, sl=sl, tp=tp or 0.0, volume_current=lots,
+        self._orders[t] = NS(ticket=t, type=2 if bull else 3, symbol=symbol, bull=bull, price_open=price, sl=sl, tp=tp or 0.0, volume_current=lots,
                             magic=magic, comment=comment)
         self.log.append(("limit", symbol, price))
         return t, ""

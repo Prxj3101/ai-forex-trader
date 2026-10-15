@@ -61,7 +61,9 @@ class MT5Broker:
         if a is None:
             return {}
         return dict(login=a.login, server=a.server, demo=a.trade_mode == self.mt5.ACCOUNT_TRADE_MODE_DEMO,
-                    balance=round(a.balance, 2), equity=round(a.equity, 2), margin_free=round(a.margin_free, 2),
+                    balance=round(a.balance, 2), equity=round(a.equity, 2), margin=round(getattr(a, "margin", 0.0), 2),
+                    margin_free=round(a.margin_free, 2), margin_level=round(getattr(a, "margin_level", 0.0) or 0.0, 1),
+                    leverage=getattr(a, "leverage", None), profit=round(getattr(a, "profit", 0.0), 2),
                     currency=a.currency, trade_allowed=bool(getattr(a, "trade_allowed", True)))
 
     def _sym(self, symbol):
@@ -492,9 +494,12 @@ class Executor:
             for strat in ("zone", "orb"):
                 for p in self.b.positions(MAGIC[strat]):
                     pos.append(dict(strategy=strat, ticket=p.ticket, symbol=p.symbol, buy=p.type == 0, lots=p.volume,
-                                    price_open=p.price_open, sl=p.sl, tp=p.tp, profit=round(p.profit, 2)))
-            orders = [dict(strategy="zone", ticket=o.ticket, symbol=o.symbol, price=o.price_open, sl=o.sl, tp=o.tp,
-                           lots=o.volume_current) for o in self.b.orders(MAGIC["zone"])]
+                                    price_open=p.price_open, price_now=getattr(p, "price_current", None), sl=p.sl, tp=p.tp,
+                                    profit=round(p.profit, 2), swap=round(getattr(p, "swap", 0.0), 2),
+                                    time=int(getattr(p, "time", 0) or 0)))
+            orders = [dict(strategy="zone", ticket=o.ticket, symbol=o.symbol, buy=getattr(o, "type", 2) in (0, 2, 4),
+                           price=o.price_open, sl=o.sl, tp=o.tp, lots=o.volume_current, time=int(getattr(o, "time_setup", 0) or 0))
+                      for o in self.b.orders(MAGIC["zone"])]
             links = {"zone": {k: {kk: r.get(kk) for kk in ("status", "order", "position", "real_entry", "entry_slip_pips", "error")}
                               for k, r in self.zone.items() if r.get("status") in ("pending", "open", "failed")},
                      "orb": {k: {kk: r.get(kk) for kk in ("status", "position", "real_entry", "entry_slip_pips", "error")}

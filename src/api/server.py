@@ -511,6 +511,19 @@ def live_orb():
     return r
 
 
+@app.get("/api/live/real")
+def live_real():
+    """REAL DEMO account panel (orders the bot sends to the MT5 demo): VPS or this PC."""
+    from src.api import live_status as ls
+    remote = _remote_cfg()
+    if remote is None:
+        return ls.build_real_account(LIVE) | {"source": "local"}
+    r = _remote_get(remote, "/api/live/real", {})
+    if r.get("error", "").startswith("VPS error 404"):
+        r["error"] = "VPS live API is an old version: git pull + restart LIVE API on the VPS"
+    return r
+
+
 @app.get("/api/live/weekly")
 def live_weekly():
     """Weekend report (bot writes it every Saturday NY): your AVOID / TAKE / EXIT / CLOSE decisions vs the bot."""

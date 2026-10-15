@@ -438,6 +438,37 @@ export type ExecStatus = {
   links: { zone?: Record<string, RealLink>; orb?: Record<string, RealLink> }
   errors: string[]
 }
+export type RealStats = {
+  trades: number; wins?: number; win_pct?: number; net_usd?: number; pf_usd?: number | null; gross_profit?: number
+  commission_usd?: number; swap_usd?: number; avg_win?: number | null; avg_loss?: number | null; best?: number; worst?: number
+  max_dd_usd?: number; today?: number; week?: number; month?: number; real_r?: number; shadow_r?: number
+  r_gap_per_trade?: number | null; avg_slip_pips?: number | null; worst_slip_pips?: number | null
+}
+export type RealOpen = {
+  strategy: 'zone' | 'orb'; ticket: number; symbol: string; buy: boolean; lots: number; price_open: number; price_now: number | null
+  sl: number; tp: number; profit: number; swap: number; time: number; shadow_entry: number | null; slip_pips: number | null
+  risk: number | null; r_now: number | null; opened: string | null; exit: string | null; user_exit: string; taken_manual: boolean
+  key: string | null; shadow_fill_time: number | null
+}
+export type RealClosed = {
+  strategy: string; symbol: string; direction: string; key: string; lots: number | null; shadow_fill_time: string | null
+  shadow_entry: number | null; real_open_time: string | null; real_entry: number | null; entry_slip_pips: number | null
+  sl: number | null; risk: number | null; shadow_r: number | null; shadow_exit: string | null; real_exit_time: string | null
+  real_exit: number | null; real_exit_reason: string | null; real_r: number | null; profit_usd: number | null
+  commission_usd: number | null; swap_usd: number | null; net_usd: number | null; ticket: number | null; note: string | null
+}
+export type RealAccount = {
+  status: string
+  error?: string
+  exec: ExecStatus | null
+  open: RealOpen[]
+  pending: ExecStatus['orders']
+  stats: Record<string, RealStats>
+  curve: { t: number; all: number; zone: number; orb: number }[]
+  daily: { day: string; zone?: number; orb?: number }[]
+  closed: RealClosed[]
+}
+
 export type RealSummary = {
   strategies: Record<string, { trades: number; real_r: number; shadow_r: number; r_gap: number | null; avg_entry_slip_pips: number | null; net_usd: number; commission_usd: number; wins: number }>
   trades: { strategy: string; symbol: string; direction: string; shadow_entry: number | null; real_entry: number | null; entry_slip_pips: number | null; shadow_r: number | null; real_r: number | null; real_exit_reason: string | null; net_usd: number | null; real_exit_time: string | null; note: string | null }[]
@@ -722,6 +753,7 @@ export const api = {
   orbResearchBrain: () => request<OrbBrain>('/api/orb/research/brain'),
   liveControl: (c: LiveControl) => request<{ ok: boolean }>('/api/live/control', { ...c }, 'POST'),
   liveWeekly: () => request<WeeklyReport>('/api/live/weekly'),
+  liveReal: () => request<RealAccount>('/api/live/real'),
   researchV2Build: (symbol: string) => request<{ started: boolean }>('/api/research/v2/build', { symbol }, 'POST'),
   researchV2Report: (symbol: string, f: ResearchV2Filters) =>
     request<ResearchV2Report>('/api/research/v2/report', {

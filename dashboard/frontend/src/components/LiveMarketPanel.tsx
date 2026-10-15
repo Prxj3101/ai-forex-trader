@@ -373,7 +373,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
 }
 
 /** REAL DEMO ORDERS bar: ZONE / ORB switches (confirm box), MT5 account, last error. */
-function ExecBar({ ex }: { ex: ExecStatus | null }) {
+export function ExecBar({ ex }: { ex: ExecStatus | null }) {
   if (!ex) {
     return <div className="mb-2 text-[10px] text-muted">REAL DEMO ORDERS: waiting for the bot (needs the new bot version on the VPS).</div>
   }

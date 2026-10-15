@@ -16,6 +16,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+NY = "America/New_York"
+
 EPOCH = pd.Timestamp("1970-01-01", tz="UTC")
 
 
@@ -616,3 +618,108 @@ def chart_orb(live: Path, symbol: str) -> list[dict]:
         return _orb_ranges(live, json.loads(f.read_text()), symbol)
     except Exception:  # noqa: BLE001
         return []
+
+
+# ----------------------------------------------------------------------
+# REAL DEMO ACCOUNT (src/live/execution.py): full panel like the shadow / ORB accounts
+# ----------------------------------------------------------------------
+def _pf_usd(v: pd.Series):
+    v = v.dropna()
+    gl = -v[v < 0].sum()
+    return round(float(v[v > 0].sum() / gl), 2) if gl > 0 else None
+
+
+def _real_stats(g: pd.DataFrame, now: pd.Timestamp) -> dict:
+    if g.empty:
+        return dict(trades=0)
+    net = g["net_usd"].astype(float)
+    t = pd.to_datetime(g["real_exit_time"], utc=True, errors="coerce", format="mixed")
+    curve = net.fillna(0).cumsum()
+    dd = float((curve.cummax().clip(lower=0) - curve).max()) if len(curve) else 0.0
+    day0 = now.tz_convert(NY).normalize().tz_convert("UTC")
+    wk0 = day0 - pd.Timedelta(days=now.tz_convert(NY).weekday())
+    mo0 = now.tz_convert(NY).replace(day=1).normalize().tz_convert("UTC")
+    rr, sr = g["real_r"].astype(float), g["shadow_r"].astype(float)
+    both = (rr - sr).dropna()
+    return dict(trades=int(len(g)), wins=int((net > 0).sum()), win_pct=round(100 * float((net > 0).mean()), 1),
+                net_usd=round(float(net.sum()), 2), pf_usd=_pf_usd(net),
+                gross_profit=round(float(g["profit_usd"].astype(float).sum()), 2),
+                commission_usd=round(float(g["commission_usd"].astype(float).sum()), 2),
+                swap_usd=round(float(g["swap_usd"].astype(float).fillna(0).sum()), 2),
+                avg_win=round(float(net[net > 0].mean()), 2) if (net > 0).any() else None,
+                avg_loss=round(float(net[net < 0].mean()), 2) if (net < 0).any() else None,
+                best=round(float(net.max()), 2), worst=round(float(net.min()), 2), max_dd_usd=round(dd, 2),
+                today=round(float(net[t >= day0].sum()), 2), week=round(float(net[t >= wk0].sum()), 2),
+                month=round(float(net[t >= mo0].sum()), 2),
+                real_r=round(float(rr.sum()), 2), shadow_r=round(float(sr.sum()), 2),
+                r_gap_per_trade=round(float(both.mean()), 3) if len(both) else None,
+                avg_slip_pips=round(float(g["entry_slip_pips"].astype(float).mean()), 2) if g["entry_slip_pips"].notna().any() else None,
+                worst_slip_pips=round(float(g["entry_slip_pips"].astype(float).max()), 2) if g["entry_slip_pips"].notna().any() else None)
+
+
+def build_real_account(live: Path, n: int = 150) -> dict:
+    """Everything about the real DEMO account: status, account, open positions (with their shadow trade),
+    pending orders, closed trades, stats (all / zone / orb), P&L curve, daily P&L, errors."""
+    now = pd.Timestamp.now(tz="UTC")
+    ex = _exec_status(live)
+    out: dict = {"status": "ok" if ex else "none", "exec": ex}
+    st = {}
+    try:
+        f = live / "exec_state.json"
+        st = json.loads(f.read_text()) if f.exists() else {}
+    except Exception:  # noqa: BLE001
+        st = {}
+    by_pos = {}
+    for strat in ("zone", "orb"):
+        for k, r in (st.get(strat) or {}).items():
+            if r.get("position") is not None:
+                by_pos[int(r["position"])] = dict(r, strategy=strat, key=k)
+    shadow_open = {}
+    try:
+        ss = json.loads((live / "shadow_state.json").read_text()) if (live / "shadow_state.json").exists() else {}
+        for t in ss.get("open_trades", []):
+            shadow_open[f"{t['symbol']}|{to_unix(pd.Timestamp(t['zone']))}|{t['direction']}"] = t
+    except Exception:  # noqa: BLE001
+        pass
+    opn = []
+    for p in (ex or {}).get("positions", []):
+        r = by_pos.get(int(p["ticket"]), {})
+        sh = shadow_open.get(r.get("key", ""), {})
+        risk = r.get("risk")
+        now_px = p.get("price_now")
+        r_now = (((now_px - p["price_open"]) if p["buy"] else (p["price_open"] - now_px)) / risk) if (now_px and risk) else None
+        opn.append(dict(p, shadow_entry=r.get("shadow_entry"), slip_pips=r.get("entry_slip_pips"), risk=risk,
+                        r_now=round(r_now, 3) if r_now is not None else None, opened=r.get("real_open_time"),
+                        exit=sh.get("exit") if p["strategy"] == "zone" else "tp2", user_exit=sh.get("user_exit", ""),
+                        taken_manual=sh.get("user") == "take", key=r.get("key"),
+                        shadow_fill_time=(to_unix(pd.Timestamp(sh["fill_time"])) if sh.get("fill_time") else None)
+                        if p["strategy"] == "zone" else (int(r["key"].split("|")[1]) if r.get("key") else None)))
+    out["open"] = opn
+    out["pending"] = (ex or {}).get("orders", [])
+    f = live / "real_trades.csv"
+    d = pd.read_csv(f) if f.exists() else pd.DataFrame(columns=["strategy"])
+    if len(d):
+        d["t_exit"] = pd.to_datetime(d["real_exit_time"], utc=True, errors="coerce", format="mixed")
+        d = d.sort_values("t_exit")
+    out["stats"] = {"all": _real_stats(d, now)} | {s_: _real_stats(g, now) for s_, g in d.groupby("strategy")} if len(d) \
+        else {"all": dict(trades=0)}
+    curve = []
+    if len(d):
+        cum = {"all": 0.0, "zone": 0.0, "orb": 0.0}
+        for r in d.itertuples():
+            v = float(r.net_usd) if pd.notna(r.net_usd) else 0.0
+            cum["all"] += v
+            cum[r.strategy] = cum.get(r.strategy, 0.0) + v
+            if pd.notna(r.t_exit):
+                curve.append(dict(t=int(r.t_exit.timestamp()), all=round(cum["all"], 2), zone=round(cum["zone"], 2),
+                                  orb=round(cum["orb"], 2)))
+        dd = d.dropna(subset=["t_exit"]).copy()
+        dd["day"] = dd["t_exit"].dt.tz_convert(NY).dt.strftime("%Y-%m-%d")
+        daily = dd.groupby(["day", "strategy"])["net_usd"].sum().unstack(fill_value=0.0).tail(30)
+        out["daily"] = [dict(day=i, **{c: round(float(v), 2) for c, v in row.items()}) for i, row in daily.iterrows()]
+    else:
+        out["daily"] = []
+    out["curve"] = curve
+    cols = [c for c in d.columns if c != "t_exit"]
+    out["closed"] = d.tail(n).iloc[::-1][cols].astype(object).where(lambda x: x.notna(), None).to_dict("records") if len(d) else []
+    return out

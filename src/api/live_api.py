@@ -112,6 +112,14 @@ def live_control(action: str, symbol: str, zone: int | None = None, direction: s
     return {"ok": True, **c}
 
 
+@app.get("/api/live/real")
+def live_real(x_live_token: str = Header(default="")):
+    """REAL DEMO account (execution.py): account, open positions, pending orders, closed trades, stats, curve."""
+    if not hmac.compare_digest(x_live_token, TOKEN):
+        raise HTTPException(401, "bad token")
+    return live_status.build_real_account(LIVE)
+
+
 @app.get("/api/live/weekly")
 def live_weekly(x_live_token: str = Header(default="")):
     """Latest weekend report (data/live/weekly/, written by the bot every Saturday NY)."""
