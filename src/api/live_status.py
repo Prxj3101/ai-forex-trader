@@ -70,6 +70,32 @@ def _pf(x: pd.Series):
 TF_RULE = {"M5": "5min", "M15": "15min", "H1": "1h"}
 
 
+ZONE_TYPES = ("normal", "confluence", "h4")     # 16 Oct 2026: 3-part zone bot (src/live/shadow.py ZONE_RISK)
+
+
+def _ztype(v) -> str:
+    return v if isinstance(v, str) and v in ZONE_TYPES else "normal"
+
+
+def _zone_type_stats(c: pd.DataFrame) -> list[dict]:
+    """Closed shadow trades per zone type: trades, win %, PF ($), net $, R."""
+    zt = c["zone_type"].map(_ztype) if "zone_type" in c else pd.Series("normal", index=c.index)
+    rows = []
+    for k in ZONE_TYPES:
+        g = c[zt == k]
+        pnl = g["pnl"].astype(float) if "pnl" in g else pd.Series(dtype=float)
+        rows.append(dict(zone_type=k, trades=int(len(g)), win_pct=round(float((pnl > 0).mean() * 100), 1) if len(g) else None,
+                         pf=_pf(pnl), pnl=round(float(pnl.sum()), 2),
+                         r_sum=round(float(g["r"].astype(float).sum()), 2) if "r" in g and len(g) else 0.0))
+    return rows
+
+
+def _zone_risk_now(cfg, equity: float, peak: float) -> dict:
+    from src.live.shadow import ZONE_RISK
+    braked = peak > 0 and (peak - equity) / peak * 100 >= cfg.brake_dd_pct
+    return {k: round(v * (cfg.brake_factor if braked else 1.0), 3) for k, v in ZONE_RISK.items()}
+
+
 def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
     """Live chart: bot ke MT5 candles (data/live/chart_SYM.json) + zones jo bot dekh raha hai + is pair ke trades."""
     tf = tf if tf in TF_RULE else "M15"
@@ -127,7 +153,8 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
                             "tp": clean(t.get("tp")), "stop_now": clean(t.get("stop_now")), "best_r": clean(t.get("best_r")),
                             "exit": t.get("exit"), "lots": clean(t.get("lots")), "r_now": clean(t.get("r_now")),
                             "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None,
-                            "zone": to_unix(pd.Timestamp(t["zone"])) if t.get("zone") else None}
+                            "zone": to_unix(pd.Timestamp(t["zone"])) if t.get("zone") else None,
+                            "zone_type": t.get("zone_type") or "normal"}
                            for t in st.get("open_trades", []) if t.get("symbol") == symbol]
         except Exception:  # noqa: BLE001
             pass
@@ -140,7 +167,8 @@ def build_chart(live: Path, symbol: str, tf: str = "M15", n: int = 300) -> dict:
             closed_raw = c.to_dict("records")
             out["trades"] = [{"direction": r.direction, "entry": clean(r.entry), "sl": clean(r.sl), "exit": r.exit,
                               "r": clean(r.r), "exit_reason": r.exit_reason, "pnl": clean(r.pnl),
-                              "fill_ts": to_unix(pd.Timestamp(r.fill_time)), "exit_ts": to_unix(pd.Timestamp(r.exit_time))}
+                              "fill_ts": to_unix(pd.Timestamp(r.fill_time)), "exit_ts": to_unix(pd.Timestamp(r.exit_time)),
+                              "zone_type": _ztype(getattr(r, "zone_type", None))}
                              for r in c.itertuples(index=False)]
         except Exception:  # noqa: BLE001
             pass
@@ -285,7 +313,8 @@ def build_ticks(live: Path) -> dict:
                             "best_r": clean(t.get("best_r")), "r_now": clean(t.get("r_now")),
                             "filled_at": to_unix(pd.Timestamp(t["filled_at"])) if t.get("filled_at") else None,
                             "fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None,
-                            "zone": to_unix(pd.Timestamp(t["zone"])) if t.get("zone") else None}
+                            "zone": to_unix(pd.Timestamp(t["zone"])) if t.get("zone") else None,
+                            "zone_type": _ztype(t.get("zone_type"))}
                            for t in st.get("open_trades", [])]
         except Exception:  # noqa: BLE001
             pass
@@ -429,10 +458,12 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
         daily_loss_pct=cfg.daily_loss_pct, daily_budget_pct=cfg.daily_risk_budget_pct,
         combo_enabled=cfg.combo_enabled, risk_mode=st.get('risk_mode'),
         base_risk_pct=cfg.risk_pct, risk_cap_pct=cfg.risk_cap_pct,
+        zone_risk=_zone_risk_now(cfg, equity, peak), max_open=cfg.max_open, max_per_symbol=cfg.max_per_symbol,
     )
     out["open_trades"] = [
         {k: clean(t.get(k)) if not isinstance(t.get(k), str) else t.get(k)
-         for k in ("symbol", "direction", "entry", "sl", "sl_pips", "lots", "risk_usd", "risk_pct", "exit", "score", "r_now")}
+         for k in ("symbol", "direction", "entry", "sl", "sl_pips", "lots", "risk_usd", "risk_pct", "exit", "score", "r_now",
+                   "zone_type")}
         | {"commission_usd": round(float(t.get("lots") or 0) * cfg.commission_per_lot, 2)}
         | {"fill_time": to_unix(pd.Timestamp(t["fill_time"])) if t.get("fill_time") else None}
         for t in open_state
@@ -465,21 +496,26 @@ def build(live: Path, decisions: int = 40, trades: int = 30) -> dict:
                              win_pct=round(float((pnl > 0).mean() * 100), 1) if len(c) else None,
                              pnl=round(float(pnl.sum()), 2), r_sum=round(float(r.sum()), 2), pf=_pf(pnl),
                              commission=round(closed_commission, 2))
+        out["by_zone_type"] = _zone_type_stats(c)
         c = c.assign(exit_ts=[to_unix(pd.Timestamp(x)) for x in c["exit_time"]],
                      fill_ts=[to_unix(pd.Timestamp(x)) for x in c["fill_time"]])
         eq = cfg.capital + pnl.cumsum()
         out["curve"] = [{"time": int(t), "value": round(float(v), 2)} for t, v in zip(c["exit_ts"], eq) if t]
-        cols = [k for k in ("symbol", "direction", "fill_ts", "exit_ts", "entry", "exit", "exit_reason", "r", "lots", "commission_usd", "pnl")
-                if k in c]
+        if "zone_type" not in c:
+            c = c.assign(zone_type="normal")
+        c = c.assign(zone_type=c["zone_type"].map(_ztype))
+        cols = [k for k in ("symbol", "direction", "fill_ts", "exit_ts", "entry", "exit", "exit_reason", "r", "lots", "commission_usd",
+                            "pnl", "zone_type") if k in c]
         out["trades"] = _clean_rows(c[cols].tail(trades).iloc[::-1])
     else:
         out["closed"] = dict(count=0, wins=0, win_pct=None, pnl=0.0, r_sum=0.0, pf=None, commission=0.0)
+        out["by_zone_type"] = _zone_type_stats(pd.DataFrame())
         out["curve"], out["trades"] = [], []
 
     d = _tail_csv(live / "decisions.csv", decisions)
     if len(d):
         d = d.assign(bar_ts=[to_unix(pd.Timestamp(x)) for x in d["bar_time"]])
-        cols = [k for k in ("bar_ts", "symbol", "direction", "entry", "score", "decision", "reason", "lots", "exit")
+        cols = [k for k in ("bar_ts", "symbol", "direction", "entry", "score", "decision", "reason", "lots", "exit", "zone_type")
                 if k in d]
         out["decisions"] = _clean_rows(d[cols].iloc[::-1])
     else:
@@ -692,6 +728,7 @@ def build_real_account(live: Path, n: int = 150) -> dict:
                         r_now=round(r_now, 3) if r_now is not None else None, opened=r.get("real_open_time"),
                         exit=sh.get("exit") if p["strategy"] == "zone" else "tp2", user_exit=sh.get("user_exit", ""),
                         taken_manual=sh.get("user") == "take", key=r.get("key"),
+                        zone_type=_ztype(r.get("zone_type") or sh.get("zone_type")) if p["strategy"] == "zone" else None,
                         shadow_fill_time=(to_unix(pd.Timestamp(sh["fill_time"])) if sh.get("fill_time") else None)
                         if p["strategy"] == "zone" else (int(r["key"].split("|")[1]) if r.get("key") else None)))
     out["open"] = opn
@@ -703,6 +740,10 @@ def build_real_account(live: Path, n: int = 150) -> dict:
         d = d.sort_values("t_exit")
     out["stats"] = {"all": _real_stats(d, now)} | {s_: _real_stats(g, now) for s_, g in d.groupby("strategy")} if len(d) \
         else {"all": dict(trades=0)}
+    # 16 Oct 2026: zone bot split by zone type (normal 0.25% / confluence 1% / 4H 1%)
+    zd = d[d["strategy"] == "zone"] if len(d) else d
+    zt = zd["zone_type"].map(_ztype) if "zone_type" in zd else pd.Series("normal", index=zd.index)
+    out["stats_zone_type"] = {k: _real_stats(zd[zt == k], now) for k in ZONE_TYPES}
     curve = []
     if len(d):
         cum = {"all": 0.0, "zone": 0.0, "orb": 0.0}

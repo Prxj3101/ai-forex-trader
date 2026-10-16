@@ -17,7 +17,14 @@ import type { Zone } from './api'
 */
 
 type Target = Parameters<IPrimitivePaneRenderer['draw']>[0]
-type Box = { x1: number; x2: number; yTop: number; yBot: number; yBody: number; yEntry: number; color: string; label: string; dead: boolean }
+type Box = { x1: number; x2: number; yTop: number; yBot: number; yBody: number; yEntry: number; color: string; label: string; dead: boolean; tag: string; tagColor: string }
+
+/** 16 Oct 2026: zone type tag text + colour (3-part zone bot). */
+export const ZONE_TYPE_TAG: Record<string, { text: string; color: string }> = {
+  normal: { text: 'NORMAL', color: '#c4d0e0' },
+  confluence: { text: 'CONFLUENCE', color: '#ffb000' },
+  h4: { text: '4H ZONE', color: '#b388ff' },
+}
 
 /** Zone ke text labels: sab, sirf zinda (invalid nahi hue) zones ke, ya koi nahi. Chart saaf rakhne ke liye. */
 export type LabelMode = 'all' | 'live' | 'none'
@@ -70,6 +77,18 @@ class ZonesRenderer implements IPrimitivePaneRenderer {
           ctx.lineWidth = 3 * hr
           ctx.strokeText(b.label, x + 4 * hr, y - 4 * vr)
           ctx.fillText(b.label, x + 4 * hr, y - 4 * vr)
+        }
+        // ZONE TYPE tag under the box: NORMAL / CONFLUENCE / 4H ZONE (always shown, even when labels are off)
+        if (b.tag) {
+          ctx.globalAlpha = b.dead ? 0.7 : 1
+          ctx.font = `700 ${11 * vr}px 'IBM Plex Mono', monospace`
+          ctx.textBaseline = 'top'
+          ctx.strokeStyle = '#090b0e'
+          ctx.lineWidth = 3 * hr
+          ctx.strokeText(b.tag, x + 4 * hr, y + h + 3 * vr)
+          ctx.fillStyle = b.tagColor
+          ctx.fillText(b.tag, x + 4 * hr, y + h + 3 * vr)
+          ctx.textBaseline = 'alphabetic'
         }
         ctx.globalAlpha = 1
       }
@@ -163,6 +182,8 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
         color: bull ? '#00ff9c' : '#ff426e',
         label: showLabel ? `${bull ? 'DEMAND' : 'SUPPLY'} ${z.bottom}-${z.top} · ${z.disp_atr}x ATR${z.has_fvg ? ' · FVG' : ''}` : '',
         dead,
+        tag: ZONE_TYPE_TAG[z.zone_type ?? 'normal']?.text ?? '',
+        tagColor: ZONE_TYPE_TAG[z.zone_type ?? 'normal']?.color ?? '#c4d0e0',
       })
     }
     this.view.rendererImpl.boxes = boxes

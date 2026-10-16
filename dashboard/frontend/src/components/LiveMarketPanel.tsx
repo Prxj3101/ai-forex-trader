@@ -20,7 +20,7 @@ import ControlButton from './ControlButton'
 import { useNow } from '../lib/hooks'
 import { NY, fmtTick, fmtTs } from '../lib/time'
 import { type Segment, SegmentsPrimitive } from '../lib/segmentsPrimitive'
-import { ZonesPrimitive } from '../lib/zonesPrimitive'
+import { ZONE_TYPE_TAG, ZonesPrimitive } from '../lib/zonesPrimitive'
 import { ORB_COLORS, OrbPrimitive } from '../lib/orbPrimitive'
 
 /*
@@ -55,6 +55,7 @@ const STATUS: Record<string, { text: string; color: string; tip: string }> = {
 function toZone(z: LiveWatchZone): Zone | null {
   if (z.top == null || z.bottom == null || z.created_at == null) return null
   return {
+    zone_type: z.zone_type ?? 'normal',
     direction: z.direction,
     zone_candle_time: z.zone_candle_time ?? z.created_at,
     created_at: z.created_at,
@@ -164,6 +165,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
     const traded: Zone[] = (data.traded_zones ?? []).flatMap((z) => {
       if (z.top == null || z.bottom == null) return []
       return [{
+        zone_type: z.zone_type ?? 'normal',
         direction: z.direction, zone_candle_time: z.zone_candle_time ?? z.fill_time, created_at: z.created_at ?? z.fill_time,
         top: z.top, bottom: z.bottom, body_top: z.body_top ?? z.top, body_bottom: z.body_bottom ?? z.bottom,
         entry: z.entry, disp_atr: z.disp_atr ?? 0, has_fvg: z.has_fvg, first_touch_time: z.fill_time, first_touch_depth: null,
@@ -245,7 +247,7 @@ function LiveChartBox({ symbol, tf, connected, ticks, showOrb = true }: { symbol
     for (const t of data.open) {
       if (!t.fill_time) continue
       const p = pnlOf(t)
-      const side = `${t.kind === 'orb' ? `ORB ${t.range ?? ''} · ` : ''}${t.direction === 'bull' ? 'BUY' : 'SELL'} ${t.lots}`
+      const side = `${t.kind === 'orb' ? `ORB ${t.range ?? ''} · ` : `${ZONE_TYPE_TAG[t.zone_type ?? 'normal'].text} · `}${t.direction === 'bull' ? 'BUY' : 'SELL'} ${t.lots}`
       segs.push({
         t1: t.fill_time, t2: null, price: t.entry, color: CYAN, width: 2,
         label: p ? `${side} · ${fmtSigned(p.pips)} pips · ${fmtUsd(p.usd)} · ${fmtSigned(p.r, 2)}R` : `ENTRY ${side}`,
@@ -528,6 +530,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                 <thead className="sticky top-0 text-[9px] text-muted" style={{ background: 'var(--panel)' }}>
                   <tr>
                     <th className="text-left font-normal">PAIR</th><th className="text-left font-normal">SIDE</th>
+                    <th className="text-left font-normal" title="NORMAL = 15m zone (0.25% risk) · CONFLUENCE = 15m zone inside an H4 zone (1% risk) · 4H ZONE = H4 zone trade (1% risk, 1:1)">TYPE</th>
                     <th className="text-right font-normal">ENTRY</th>
                     <th className="text-right font-normal" title="Pips price still has to travel to reach the entry">AWAY</th>
                     <th className="text-right font-normal">ML</th>
@@ -554,9 +557,10 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                       >
                         <td>{z.symbol}</td>
                         <td style={{ color: z.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{z.direction === 'bull' ? 'BUY' : 'SELL'}</td>
+                        <td className="text-[10px]" style={{ color: ZONE_TYPE_TAG[z.zone_type ?? 'normal'].color }}>{ZONE_TYPE_TAG[z.zone_type ?? 'normal'].text}</td>
                         <td className="text-right">{z.entry.toFixed(digitsOf(z.symbol))}</td>
                         <td className="text-right" style={{ color: z.away != null && z.away < 3 ? 'var(--amber)' : undefined }}>{z.away == null ? '—' : z.away.toFixed(1)}</td>
-                        <td className="text-right" style={{ color: z.score >= (data?.watch?.threshold ?? 1) ? 'var(--green)' : 'var(--muted)' }}>{Math.round(z.score * 100)}%</td>
+                        <td className="text-right" style={{ color: z.score >= (z.thr ?? data?.watch?.threshold ?? 1) ? 'var(--green)' : 'var(--muted)' }} title={`ML needs ${Math.round((z.thr ?? data?.watch?.threshold ?? 0) * 100)}%${z.zone_type === 'h4' ? ' (H4 brain)' : ''}`}>{Math.round(z.score * 100)}%</td>
                         <td className="text-right">
                           {z.zone_candle_time != null ? (
                             <ControlButton
@@ -649,6 +653,7 @@ export default function LiveMarketPanel({ connected, data, ticks = null }: { con
                     <div className="flex items-baseline gap-2">
                       <b className="font-medium">{t.symbol}</b>
                       <span style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'} {t.lots}</span>
+                      {t.kind !== 'orb' && <span className="text-[10px]" style={{ color: ZONE_TYPE_TAG[t.zone_type ?? 'normal'].color }}>{ZONE_TYPE_TAG[t.zone_type ?? 'normal'].text}</span>}
                       {t.kind === 'orb'
                         ? <span className="text-[10px]" style={{ color: '#b388ff' }} title="ORB shadow trade (separate $10k account): TP 2R, SL other side of the range, closes 16:00 NY">ORB {t.range} · 1:2</span>
                         : <span className="text-[10px]" style={{ color: t.exit === 'trail' ? '#ffb020' : 'var(--green)' }} title={t.user_exit ? `Your exit (brain picked ${t.exit_bot === 'trail' ? 'TRAIL' : '1:1'})` : 'Exit brain'}>{t.exit === 'trail' ? 'TRAIL' : '1:1'}{t.user_exit ? '*' : ''}</span>}

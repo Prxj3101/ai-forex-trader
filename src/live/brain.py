@@ -57,3 +57,28 @@ class Brain:
         d["exit_edge"] = edge
         d["exit_choice"] = np.where(edge > 0, "trail", "tp1")
         return d
+
+
+class H4Brain:
+    """16 Oct 2026: H4 zone trades only (models/h4_brain.txt + h4_brain.json, src/ml/h4_brain.py).
+    Exit is always 1:1 (research: exit brain hurt the H4 trades). Missing files -> H4 trades OFF (bot keeps running)."""
+
+    def __init__(self):
+        f, meta = MODELS / "h4_brain.txt", MODELS / "h4_brain.json"
+        if not f.exists() or not meta.exists():
+            raise FileNotFoundError("models/h4_brain.txt / h4_brain.json missing (python src/ml/h4_brain.py)")
+        m = json.loads(meta.read_text())
+        self.threshold = float(m["threshold"])
+        self.trained_at = m.get("trained_at")
+        self.entry = lgb.Booster(model_file=str(f))
+        self.features = self.entry.feature_name()
+
+    def score(self, d: pd.DataFrame) -> pd.DataFrame:
+        if d.empty:
+            return d
+        d = d.copy()
+        d["score"] = self.entry.predict(d[self.features])
+        d["ml_keep"] = d["score"] >= self.threshold
+        d["exit_edge"] = 0.0
+        d["exit_choice"] = "tp1"
+        return d

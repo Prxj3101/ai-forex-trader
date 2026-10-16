@@ -398,13 +398,32 @@ def ml_report():
         "commission": r.get("commission"),
         "slippage_pips": r.get("slippage_pips"),
         "net": r.get("results_are") == "net of costs",
+        "h4": _h4_brain_info(),
     }
+
+
+def _h4_brain_info():
+    """16 Oct 2026: H4 zone brain (models/h4_brain.json) + its research results (zone3_sim.json)."""
+    try:
+        m = json.loads((ROOT / "models" / "h4_brain.json").read_text())
+    except Exception:  # noqa: BLE001
+        return None
+    out = {k: m.get(k) for k in ("threshold", "trained_at", "h4_swing", "h4_life_days", "n_h4", "h4_kept_pct")}
+    try:
+        z = json.loads((RESEARCH / "zone3_sim.json").read_text()).get("zone3") or {}
+        out["parts"] = z.get("parts")
+    except Exception:  # noqa: BLE001
+        out["parts"] = None
+    return out
 
 
 @app.get("/api/risk/report")
 def risk_report():
-    """Risk Agent ka account simulation (portfolio_sim.json)."""
-    f = RESEARCH / "portfolio_sim.json"
+    """Risk Agent ka account simulation. 16 Oct 2026: the 3-part zone bot (zone3_sim.json, src/research/zone3_report.py)
+    = the live setup; falls back to the old 15m-only portfolio_sim.json."""
+    f = RESEARCH / "zone3_sim.json"
+    if not f.exists():
+        f = RESEARCH / "portfolio_sim.json"
     if not f.exists():
         raise HTTPException(404, "No account simulation yet. Retrain the ML Brain or run portfolio_sim.py.")
     return json.loads(f.read_text())

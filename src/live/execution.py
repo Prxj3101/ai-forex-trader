@@ -6,7 +6,7 @@ SAFETY
   - Sirf DEMO account (account_info().trade_mode == DEMO), warna ek bhi order nahi.
   - Switch: dashboard (control.json "exec": {"zone": bool, "orb": bool}), shuru mein dono OFF.
     OFF karne pe: naye orders band + zone ke pending orders cancel. Khule real trades apne exit tak manage hote rehte hain.
-  - Har order pe magic number: ZONE 1001, ORB 2002. Bot sirf apne magic wale orders / positions chhuta hai.
+  - Har order pe magic number: ZONE 1001 (normal + confluence), ZONE H4 1003, ORB 2002. Bot sirf apne magic wale orders / positions chhuta hai.
   - MAX_LOTS: isse bada lot kabhi nahi.
 ZONE BOT  armed order (READY zone, current candle) -> MT5 BUY/SELL LIMIT (entry, SL, TP 1R for 1:1, no TP for trail).
           Zone READY nahi raha / AVOID / candle badli aur order dobara armed nahi -> cancel.
@@ -28,13 +28,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-MAGIC = {"zone": 1001, "orb": 2002}
+MAGIC = {"zone": 1001, "orb": 2002, "zone_h4": 1003}   # 1003 = H4 zone trades (16 Oct 2026); normal + confluence = 1001
+ZONE_MAGICS = (MAGIC["zone"], MAGIC["zone_h4"])
 MAX_LOTS = 5.0
 DEVIATION = 20                      # points, market orders
 PIP = {"EURUSD": 1e-4, "GBPUSD": 1e-4, "USDJPY": 1e-2}
 REAL_COLS = ["strategy", "symbol", "direction", "key", "lots", "shadow_fill_time", "shadow_entry", "real_open_time",
              "real_entry", "entry_slip_pips", "sl", "risk", "shadow_r", "shadow_exit", "real_exit_time", "real_exit",
-             "real_exit_reason", "real_r", "profit_usd", "commission_usd", "swap_usd", "net_usd", "ticket", "note"]
+             "real_exit_reason", "real_r", "profit_usd", "commission_usd", "swap_usd", "net_usd", "ticket", "note", "zone_type"]
 
 
 def _now_ms() -> int:
@@ -219,6 +220,11 @@ class Executor:
         self.state_file = live / "exec_state.json"
         self.status_file = live / "exec_status.json"
         self.trades_file = live / "real_trades.csv"
+        try:                                   # 16 Oct 2026: zone_type column added -> upgrade an old file once
+            from src.live.shadow import upgrade_csv
+            upgrade_csv(self.trades_file, REAL_COLS, {"zone_type": None})
+        except Exception:  # noqa: BLE001
+            pass
         self.zone: dict = {}            # key "SYM|zone|dir" -> rec
         self.orb: dict = {}             # key "SYM|fill_time" -> rec
         self.errors: list = []
@@ -291,7 +297,8 @@ class Executor:
                    real_r=round(real_r, 3) if real_r is not None else None,
                    profit_usd=info.get("profit") if info else None, commission_usd=info.get("commission") if info else None,
                    swap_usd=info.get("swap") if info else None, net_usd=round(net, 2) if net is not None else None,
-                   ticket=rec.get("position"), note=(rec.get("note") or "") + (f"; {note}" if note else ""))
+                   ticket=rec.get("position"), note=(rec.get("note") or "") + (f"; {note}" if note else ""),
+                   zone_type=rec.get("zone_type") if strat == "zone" else None)
         pd.DataFrame([row]).reindex(columns=REAL_COLS).to_csv(self.trades_file, mode="a",
                                                               header=not self.trades_file.exists(), index=False)
 
@@ -310,7 +317,6 @@ class Executor:
     def sync_zone(self, eng) -> bool:
         """Every ~1 s: MT5 pending orders follow the shadow's armed orders; fills / closes / SL-TP follow shadow trades."""
         changed = False
-        magic = MAGIC["zone"]
         on = self.on("zone")
         # 1) desired pending orders = armed orders of the current candle
         want = {}
@@ -329,10 +335,13 @@ class Executor:
                 continue                                   # failed recently -> don't spam
             bull = o["bull"]
             tp = o["entry"] + (1 if bull else -1) * o["risk"] if o["exit"] == "tp1" else None
-            tk, err = self.b.place_limit(sym, bull, o["entry"], o["sl"], tp, o["lots"], magic, f"zone {k.split('|')[1]}")
+            zt = o.get("zone_type", "normal")
+            magic = MAGIC["zone_h4"] if zt == "h4" else MAGIC["zone"]
+            tag = {"normal": "zone", "confluence": "zone conf", "h4": "zone 4h"}.get(zt, "zone")
+            tk, err = self.b.place_limit(sym, bull, o["entry"], o["sl"], tp, o["lots"], magic, f"{tag} {k.split('|')[1]}")
             self.zone[k] = dict(key=k, symbol=sym, bull=bull, status="pending" if tk else "failed", order=tk,
                                 entry=o["entry"], sl=o["sl"], tp=tp, risk=o["risk"], lots=o["lots"], exit=o["exit"],
-                                at_ms=_now_ms(), error=err)
+                                at_ms=_now_ms(), error=err, magic=magic, zone_type=zt)
             if tk:
                 self.log(f"EXEC ZONE: {sym} {'BUY' if bull else 'SELL'} LIMIT {o['entry']} SL {o['sl']} lots {o['lots']} -> order {tk}")
             else:
@@ -345,7 +354,7 @@ class Executor:
                 continue
             od = self.b.order(rec["order"]) if rec.get("order") else None
             if od is None:                                       # gone: filled or cancelled
-                pos = self.b.position_by_order(rec["order"], rec["symbol"], magic)
+                pos = self.b.position_by_order(rec["order"], rec["symbol"], rec.get("magic", MAGIC["zone"]))
                 if pos is not None:
                     rec.update(status="open", position=pos.ticket, real_entry=pos.price_open,
                                real_open_time=pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"), fill_seen_ms=_now_ms())
@@ -385,7 +394,7 @@ class Executor:
                                       if self.zkey(c["symbol"], c["zone"], c["direction"]) == k), None)
                 if shadow_closed is not None or _now_ms() - rec.get("fill_seen_ms", 0) > 15_000:
                     why = "shadow trade closed" if shadow_closed is not None else "shadow did not take this fill"
-                    err = self.b.close(rec["position"], magic)
+                    err = self.b.close(rec["position"], rec.get("magic", MAGIC["zone"]))
                     if err:
                         self._err(f"ZONE {rec['symbol']} close failed: {err}")
                         continue
@@ -491,16 +500,17 @@ class Executor:
     def write_status(self):
         try:
             pos = []
-            for strat in ("zone", "orb"):
-                for p in self.b.positions(MAGIC[strat]):
-                    pos.append(dict(strategy=strat, ticket=p.ticket, symbol=p.symbol, buy=p.type == 0, lots=p.volume,
+            for strat, mg in (("zone", MAGIC["zone"]), ("zone", MAGIC["zone_h4"]), ("orb", MAGIC["orb"])):
+                for p in self.b.positions(mg):
+                    pos.append(dict(strategy=strat, magic=mg, ticket=p.ticket, symbol=p.symbol, buy=p.type == 0, lots=p.volume,
                                     price_open=p.price_open, price_now=getattr(p, "price_current", None), sl=p.sl, tp=p.tp,
                                     profit=round(p.profit, 2), swap=round(getattr(p, "swap", 0.0), 2),
                                     time=int(getattr(p, "time", 0) or 0)))
             orders = [dict(strategy="zone", ticket=o.ticket, symbol=o.symbol, buy=getattr(o, "type", 2) in (0, 2, 4),
                            price=o.price_open, sl=o.sl, tp=o.tp, lots=o.volume_current, time=int(getattr(o, "time_setup", 0) or 0))
-                      for o in self.b.orders(MAGIC["zone"])]
-            links = {"zone": {k: {kk: r.get(kk) for kk in ("status", "order", "position", "real_entry", "entry_slip_pips", "error")}
+                      for mg in ZONE_MAGICS for o in self.b.orders(mg)]
+            links = {"zone": {k: {kk: r.get(kk) for kk in ("status", "order", "position", "real_entry", "entry_slip_pips", "error",
+                                                         "zone_type")}
                               for k, r in self.zone.items() if r.get("status") in ("pending", "open", "failed")},
                      "orb": {k: {kk: r.get(kk) for kk in ("status", "position", "real_entry", "entry_slip_pips", "error")}
                              for k, r in self.orb.items() if r.get("status") in ("open", "closing", "failed")}}

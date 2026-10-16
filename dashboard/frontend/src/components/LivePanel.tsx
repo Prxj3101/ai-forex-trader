@@ -6,6 +6,9 @@ import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
 import LiveMarketPanel, { CloseButton } from './LiveMarketPanel'
 import WeeklyReportPanel from './WeeklyReportPanel'
+import { ZONE_TYPE_TAG } from '../lib/zonesPrimitive'
+
+const ztag = (z?: string | null) => ZONE_TYPE_TAG[z ?? 'normal'] ?? ZONE_TYPE_TAG.normal
 
 /*
   LIVE SHADOW ACCOUNT: shadow bot (src/live/shadow.py) jo files likhta hai, unka live view.
@@ -370,6 +373,15 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         </div>
       )}
 
+      {a.zone_risk && (
+        <div className="mb-2 text-[10px] tracking-wider text-muted" title="Fixed risk per zone type. In a 5% drawdown every type is cut in half. No house money.">
+          RISK PER ZONE ·{' '}
+          <span style={{ color: ztag('normal').color }}>NORMAL {a.zone_risk.normal}%</span> ·{' '}
+          <span style={{ color: ztag('confluence').color }}>CONFLUENCE {a.zone_risk.confluence}%</span> ·{' '}
+          <span style={{ color: ztag('h4').color }}>4H ZONE {a.zone_risk.h4}%</span>
+          {' '}· MAX {a.max_open} OPEN / {a.max_per_symbol} PER PAIR · BRAKE AT {a.brake_dd_pct}% DD · DAILY STOP {a.daily_loss_pct}% / BUDGET {a.daily_budget_pct}%
+        </div>
+      )}
       {a.combo_enabled && (
         <div className="mb-2 text-[10px] tracking-wider text-muted">
           COMBO · {a.risk_mode?.toUpperCase()} · BASE {a.base_risk_pct}% · CAP {a.risk_cap_pct}% · REDUCE AT 3% DD / RECOVER AT 1% DD · DAILY STOP {a.daily_loss_pct}% / BUDGET {a.daily_budget_pct}%
@@ -384,7 +396,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         <Stat label="COMM. TOTAL" value={fmtUsd(-commissionTotal)} color="var(--red)" tip={`Round-trip commission: ${fmtUsd(-closedCommission)} on closed trades + ${fmtUsd(-openCommission)} estimated for open trades`} />
         <Stat
           label="RISK NOW"
-          value={a.kill ? 'STOPPED' : `${a.risk_now_pct.toFixed(2)}%`}
+          value={a.kill ? 'STOPPED' : a.zone_risk ? `${a.zone_risk.normal} / ${a.zone_risk.confluence} / ${a.zone_risk.h4}%` : `${a.risk_now_pct.toFixed(2)}%`}
           color={a.kill ? 'var(--red)' : a.braked ? 'var(--amber)' : 'var(--text)'}
           tip={a.kill ? 'Kill switch active: no new trades until reviewed' : a.braked ? 'Drawdown brake active: risk cut in half' : a.combo_enabled ? `${a.risk_mode} mode: base ${a.base_risk_pct}% + house money, cap ${a.risk_cap_pct}%` : 'Risk per trade for the next trade including house money'}
         />
@@ -392,6 +404,21 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         <Stat label="WIN RATE" value={c.win_pct == null ? '—' : `${c.win_pct}%`} tip="Closed trades with profit after costs" />
         <Stat label="PF / R" value={`${c.pf == null ? '—' : c.pf.toFixed(2)} / ${signed(c.r_sum, 1)}R`} color={pnlColor(c.r_sum)} tip="Profit factor (money won / money lost) and total R of closed trades" />
       </div>
+      {data.by_zone_type && (
+        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {data.by_zone_type.map((b) => (
+            <div key={b.zone_type} className="border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}
+              title={b.zone_type === 'normal' ? '15m zones without H4 confluence (0.25% risk)' : b.zone_type === 'confluence' ? '15m zones inside an alive H4 zone (1% risk)' : 'H4 zone trades (1% risk, 1:1 exit, own ML brain)'}>
+              <div className="mb-0.5 text-[9px] tracking-[2px]" style={{ color: ztag(b.zone_type).color }}>{ztag(b.zone_type).text}</div>
+              <span>{b.trades} trades</span>
+              <span className="ml-2 text-muted">WIN {b.win_pct == null ? '—' : `${b.win_pct}%`}</span>
+              <span className="ml-2 text-muted">PF {b.pf == null ? '—' : b.pf.toFixed(2)}</span>
+              <span className="ml-2" style={{ color: pnlColor(b.pnl) }}>{usd(b.pnl)}</span>
+              <span className="ml-2" style={{ color: pnlColor(b.r_sum) }}>{signed(b.r_sum, 1)}R</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
         {/* trades */}
@@ -414,6 +441,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
             <table className="mb-3 w-full text-[10px]">
               <thead className="text-muted"><tr>
                 <th className="text-left font-normal">PAIR</th><th className="text-right font-normal">LOTS</th><th className="text-left font-normal">SIDE</th>
+                <th className="text-left font-normal">TYPE</th>
                 <th className="text-right font-normal">ENTRY</th>
                 <th className="text-right font-normal">EXIT</th>
                 <th className="text-right font-normal" title="Live price (bid for a buy, ask for a sell)">NOW</th>
@@ -435,6 +463,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
                       <td>{t.symbol}</td>
                       <td className="text-right">{t.lots}</td>
                       <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'}</td>
+                      <td style={{ color: ztag(t.zone_type).color }}>{ztag(t.zone_type).text}</td>
                       <td className="text-right">{t.entry}</td>
                       <td className="text-right">{t.exit === 'trail' ? 'TRAIL' : '1:1'}</td>
                       <td className="text-right">{now ?? '—'}</td>
@@ -462,7 +491,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
           ) : (
             <div className="max-h-[210px] overflow-y-auto">
               <table className="w-full text-[10px]">
-              <thead className="sticky top-0 text-muted" style={{ background: 'var(--panel)' }}><tr><th className="text-left font-normal">CLOSED (NY)</th><th className="text-left font-normal">PAIR</th><th className="text-right font-normal">LOTS</th><th className="text-left font-normal">SIDE</th><th className="text-right font-normal">EXIT</th><th className="text-right font-normal">R</th><th className="text-right font-normal">COMM.</th><th className="text-right font-normal">P&amp;L</th></tr></thead>
+              <thead className="sticky top-0 text-muted" style={{ background: 'var(--panel)' }}><tr><th className="text-left font-normal">CLOSED (NY)</th><th className="text-left font-normal">PAIR</th><th className="text-right font-normal">LOTS</th><th className="text-left font-normal">SIDE</th><th className="text-left font-normal">TYPE</th><th className="text-right font-normal">EXIT</th><th className="text-right font-normal">R</th><th className="text-right font-normal">COMM.</th><th className="text-right font-normal">P&amp;L</th></tr></thead>
                 <tbody>
                   {trades.map((t, i) => (
                     <tr key={i} title={`Filled ${t.fill_ts ? fmtTs(t.fill_ts) : '?'} NY at ${t.entry} · ${t.lots} lots · commission ${usd(-(t.commission_usd ?? t.lots * commissionPerLot))} · closed by ${t.exit_reason}`}>
@@ -470,6 +499,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
                       <td>{t.symbol}</td>
                       <td className="text-right">{t.lots}</td>
                       <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'}</td>
+                      <td style={{ color: ztag(t.zone_type).color }}>{ztag(t.zone_type).text}</td>
                       <td className="text-right">{t.exit === 'trail' ? 'TRAIL' : '1:1'} · {t.exit_reason?.toUpperCase()}</td>
                       <td className="text-right" style={{ color: pnlColor(t.r) }}>{signed(t.r)}</td>
                       <td className="text-right" style={{ color: 'var(--red)' }}>{usd(-(t.commission_usd ?? t.lots * commissionPerLot))}</td>
@@ -496,6 +526,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
                     <b className="font-medium">{d.symbol}</b>
                     <span style={{ color: d.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{d.direction === 'bull' ? 'BUY' : 'SELL'}</span>
                     <span>@ {d.entry}</span>
+                    {d.zone_type && <span className="text-[10px]" style={{ color: ztag(d.zone_type).color }}>{ztag(d.zone_type).text}</span>}
                     <span className="text-muted">ML {Math.round(d.score * 100)}%</span>
                     <b className="ml-auto font-display text-[11px] font-medium tracking-wider" style={{ color: col }}>{d.decision}</b>
                   </div>

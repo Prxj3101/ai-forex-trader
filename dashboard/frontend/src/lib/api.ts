@@ -12,7 +12,11 @@ export type Candle = {
   spread: number
 }
 
+// 16 Oct 2026: 3-part zone bot. normal = 15m zone (0.25%), confluence = 15m zone inside an H4 zone (1%), h4 = H4 zone (1%)
+export type ZoneType = 'normal' | 'confluence' | 'h4'
+
 export type Zone = {
+  zone_type?: ZoneType
   direction: 'bull' | 'bear'
   zone_candle_time: number
   created_at: number
@@ -133,15 +137,33 @@ export type MLReport = {
   net: boolean
   va_filter?: { on: boolean; max_pos: number; removed: number; pf_without: number; trades_without: number } | null
   act_filter?: { on: boolean; min_act: number; removed: number; pf_without: number; trades_without: number } | null
+  h4?: { threshold: number | null; trained_at: string | null; h4_swing: number | null; h4_life_days: number | null; n_h4: number | null
+         h4_kept_pct: number | null; parts: Zone3Part[] | null } | null
+}
+
+export type Zone3Part = {
+  zone_type: ZoneType; risk_pct: number; trades: number; win_pct: number | null; pf: number | null; net_usd: number; r_sum: number
+  pf_19_21: number | null; pf_22_26: number | null
+}
+export type Zone3Block = {
+  zone_risk: Record<ZoneType, number>
+  max_per_symbol: number
+  parts: Zone3Part[]
+  compare: { name: string; trades: number; win_pct: number; profit_factor: number; total_return_pct: number; cagr_pct: number; max_drawdown_pct: number }[]
+  h4_brain: { threshold: number | null; trained_at: string | null; h4_swing: number | null; h4_life_days: number | null; n_h4: number | null }
+  note: string
+  built_at: string
 }
 
 export type RiskReport = {
+  zone3?: Zone3Block               // 16 Oct 2026: 3-part zone bot (= live setup)
   combo?: { aggressive_trades: number; conservative_trades: number }
   config: {
     capital: number
     risk_pct: number
     commission_per_lot: number
     max_open: number
+    max_per_symbol?: number
     daily_loss_pct: number
     slippage_pips: number
     brake_dd_pct?: number
@@ -160,7 +182,7 @@ export type RiskReport = {
   kill_switch_events?: { time: string; drawdown_pct: number }[]
   va_filter?: { on: boolean; max_pos: number; skipped: number }
   act_filter?: { on: boolean; min_act: number; skipped: number }
-  account_profile?: {
+  account_profile?: null | {
     name: string
     label: string
     news_rules: boolean
@@ -307,6 +329,7 @@ export type LiveTrade = {
   lots: number
   commission_usd?: number
   pnl: number
+  zone_type?: ZoneType
 }
 
 export type LiveOpenTrade = {
@@ -323,6 +346,8 @@ export type LiveOpenTrade = {
   r_now: number | null
   commission_usd?: number
   fill_time: number | null
+  zone_type?: ZoneType
+  kind?: 'zone' | 'orb'
 }
 
 export type LiveDecision = {
@@ -335,6 +360,7 @@ export type LiveDecision = {
   reason: string | null
   lots: number | null
   exit: string | null
+  zone_type?: ZoneType | null
 }
 
 export type LiveWhatIf = { decision: string; zones: number; win_pct: number; net_brain: number; net_tp1: number; net_trail: number }
@@ -399,6 +425,9 @@ export type LiveWatchZone = {
   body_bottom: number | null
   disp_atr: number | null
   has_fvg: boolean
+  zone_type?: ZoneType
+  zone_tf?: 'M15' | 'H4'
+  thr?: number                        // ML cut-off of this zone's brain (H4 zones have their own)
 }
 
 export type LiveWatch = {
@@ -448,7 +477,7 @@ export type RealOpen = {
   strategy: 'zone' | 'orb'; ticket: number; symbol: string; buy: boolean; lots: number; price_open: number; price_now: number | null
   sl: number; tp: number; profit: number; swap: number; time: number; shadow_entry: number | null; slip_pips: number | null
   risk: number | null; r_now: number | null; opened: string | null; exit: string | null; user_exit: string; taken_manual: boolean
-  key: string | null; shadow_fill_time: number | null
+  key: string | null; shadow_fill_time: number | null; zone_type?: ZoneType | null
 }
 export type RealClosed = {
   strategy: string; symbol: string; direction: string; key: string; lots: number | null; shadow_fill_time: string | null
@@ -456,6 +485,7 @@ export type RealClosed = {
   sl: number | null; risk: number | null; shadow_r: number | null; shadow_exit: string | null; real_exit_time: string | null
   real_exit: number | null; real_exit_reason: string | null; real_r: number | null; profit_usd: number | null
   commission_usd: number | null; swap_usd: number | null; net_usd: number | null; ticket: number | null; note: string | null
+  zone_type?: ZoneType | null
 }
 export type RealAccount = {
   status: string
@@ -464,6 +494,7 @@ export type RealAccount = {
   open: RealOpen[]
   pending: ExecStatus['orders']
   stats: Record<string, RealStats>
+  stats_zone_type?: Record<ZoneType, RealStats>
   curve: { t: number; all: number; zone: number; orb: number }[]
   daily: { day: string; zone?: number; orb?: number }[]
   closed: RealClosed[]
@@ -490,6 +521,8 @@ export type WeeklyReport = {
   from_?: string
   to?: string
   zone_account?: WeeklyBox & { pnl_usd: number }
+  zone_by_type_week?: Partial<Record<ZoneType, WeeklyBox & { pnl_usd: number }>>
+  zone_by_type_all_time?: Partial<Record<ZoneType, WeeklyBox & { pnl_usd: number }>>
   orb_account?: WeeklyBox & { pnl_usd: number; manual_closes: number }
   zone_week?: WeeklyScope
   zone_all_time?: WeeklyScope
@@ -527,6 +560,7 @@ export type LiveTickTrade = {
   user_exit?: string             // '' = brain's choice
   taken_manual?: boolean         // you pressed TAKE on this zone
   zone?: number | null
+  zone_type?: ZoneType           // normal / confluence / h4 (zone bot only)
   real?: RealLink                // real DEMO order of this trade (if execution is ON)
   range?: string | null          // ORB range (ASIA / LON30 / LON60)
   risk_usd?: number | null
@@ -645,6 +679,7 @@ export type LiveChart = {
     kind?: 'zone' | 'orb'
     range?: string | null
     zone?: number | null
+    zone_type?: ZoneType
     real_entry?: number | null     // real DEMO fill price (src/live/execution.py)
   }[]
   trades: {
@@ -665,6 +700,7 @@ export type LiveChart = {
     has_fvg: boolean
     fill_time: number
     exit_ts: number | null
+    zone_type?: ZoneType
   }[]
 }
 
@@ -704,7 +740,11 @@ export type LiveStatus = {
     risk_mode?: 'aggressive' | 'conservative'
     base_risk_pct?: number
     risk_cap_pct?: number
+    zone_risk?: Record<ZoneType, number>
+    max_open?: number
+    max_per_symbol?: number
   }
+  by_zone_type?: { zone_type: ZoneType; trades: number; win_pct: number | null; pf: number | null; pnl: number; r_sum: number }[]
   open_trades?: LiveOpenTrade[]
   closed?: { count: number; wins: number; win_pct: number | null; pnl: number; r_sum: number; pf: number | null; commission?: number }
   curve?: { time: number; value: number }[]

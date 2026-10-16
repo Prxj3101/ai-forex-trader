@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, type WeeklyReport, type WeeklyBox } from '../lib/api'
+import { ZONE_TYPE_TAG } from '../lib/zonesPrimitive'
 
 /*
   WEEKEND REPORT (bot writes it every Saturday NY, src/live/weekly_report.py):
@@ -81,10 +82,19 @@ export default function WeeklyReportPanel({ connected }: { connected: boolean })
         <>
           <div className="mb-2 flex flex-wrap gap-4 text-[11px]">
             <span>ZONE BOT: {rep.zone_account?.n ?? 0} trades · <b style={{ color: col(rep.zone_account?.R) }}>{R(rep.zone_account?.R)}</b> · ${(rep.zone_account?.pnl_usd ?? 0).toFixed(2)}</span>
+            {(['normal', 'confluence', 'h4'] as const).map((k) => {
+              const b = rep.zone_by_type_week?.[k]
+              if (!b || !b.n) return null
+              return (
+                <span key={k} style={{ color: ZONE_TYPE_TAG[k].color }} title="Zone bot trades of this zone type closed this week">
+                  {ZONE_TYPE_TAG[k].text}: {b.n} · {R(b.R)} · PF {b.pf ?? '—'} · ${b.pnl_usd.toFixed(2)}
+                </span>
+              )
+            })}
             <span>ORB: {rep.orb_account?.n ?? 0} trades · <b style={{ color: col(rep.orb_account?.R) }}>{R(rep.orb_account?.R)}</b> · ${(rep.orb_account?.pnl_usd ?? 0).toFixed(2)}{rep.orb_account?.manual_closes ? ` · ${rep.orb_account.manual_closes} closed by you` : ''}</span>
             {Object.entries(rep.real_week ?? {}).map(([k, v]) => (
               <span key={k} title="Real DEMO orders on MT5 vs the same shadow trades">
-                REAL {k.toUpperCase()}: {v.n} · R {R(v.real_R)} vs shadow {R(v.shadow_R)} · ${v.net_usd.toFixed(2)}{v.avg_slip_pips != null ? ` · slip ${v.avg_slip_pips} pips` : ''}
+                REAL {k.toUpperCase().replace('_', ' ')}: {v.n} · R {R(v.real_R)} vs shadow {R(v.shadow_R)} · ${v.net_usd.toFixed(2)}{v.avg_slip_pips != null ? ` · slip ${v.avg_slip_pips} pips` : ''}
               </span>
             ))}
             <span className="text-muted">Your actions this week: {Object.entries(rep.your_actions_week ?? {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}</span>

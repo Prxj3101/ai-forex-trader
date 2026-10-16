@@ -111,11 +111,23 @@ def candidates(symbol: str, m5: pd.DataFrame, bar_time: pd.Timestamp,
     z = zone_context(z, m15, h4, d1, bias_h4, bias_d1, h1)
     z["zone_tf"] = "M15"
 
+    d = _touch_rows(z, symbol, m5, bar_time, LIFE_DAYS)
+    if d.empty:
+        return d
+    # 16 Oct 2026: H4 ZONE CONFLUENCE = M15 zone overlaps a same-direction alive H4 BOS zone (swing 5)
+    alive = h4_zone_list(symbol, h4)
+    d["h4_zone"] = [h4_overlap(alive, bar_time, r.direction, r.top, r.bottom) for r in d.itertuples(index=False)]
+    d["zone_type"] = np.where(d["h4_zone"], "confluence", "normal")
+    return d
+
+
+def _touch_rows(z: pd.DataFrame, symbol: str, m5: pd.DataFrame, bar_time: pd.Timestamp, life_days: int) -> pd.DataFrame:
+    """Zinda + abhi tak na chhue zones -> ML cards (backtest simulate_touches jaisa, sirf pehla touch)."""
     lo, hi, cl, sp = (m5[c].to_numpy() for c in ["low", "high", "close", "spread"])   # ASLI spread (fill check)
     idx = m5.index
     real_m15_spread = m5["spread"].resample("15min").mean()      # zone bante waqt ka asli spread (log ke liye)
     f = len(m5)                                  # abhi wali candle ka index (backtest jaisa: array mein agla)
-    life = LIFE_DAYS * BARS_PER_DAY
+    life = life_days * BARS_PER_DAY
     rows = []
     for r in z.itertuples(index=False):
         bull = r.direction == "bull"
@@ -150,3 +162,61 @@ def candidates(symbol: str, m5: pd.DataFrame, bar_time: pd.Timestamp,
     d = add_activity(d, symbol, m5)
     d["act_ok"] = config.act_ok(d["act_15m"])
     return prepare(d)
+
+
+# ----------------------------------------------------------------------
+# H4 zones (16 Oct 2026): research = src/research/confluence_test.py (confluence) + h4_merge_test.py (H4 trades)
+# ----------------------------------------------------------------------
+H4_SWING = 5                 # BOS reference swing for H4 zones (bigger structure than the M15 bot's swing 1)
+H4_LIFE_DAYS = 60            # H4 zone trade: untapped zone lives up to 60 trading days
+H4_CONF_BARS = 360           # confluence: H4 zone alive until an H4 close beyond its wick (max 360 H4 bars)
+H4_CONF_DAYS = 84            # ... and max 84 calendar days after it was created
+
+
+def h4_zone_list(symbol: str, h4: pd.DataFrame) -> pd.DataFrame:
+    """H4 BOS zones (swing 5) with created_at / end (= H4 close beyond the wick, or 84 days) for the confluence check."""
+    z4 = find_orderflow_zones(h4, swing_n=H4_SWING, min_disp_atr=config.disp_for(symbol))
+    if z4.empty:
+        return z4
+    z4 = track_zones(z4, h4, max_bars=H4_CONF_BARS)
+    end = z4["invalidated_time"].fillna(pd.Timestamp("2100-01-01", tz="UTC"))
+    z4["end"] = np.minimum(end, z4["created_at"] + pd.Timedelta(days=H4_CONF_DAYS))
+    return z4
+
+
+def h4_overlap(z4: pd.DataFrame, t: pd.Timestamp, direction: str, top: float, bottom: float) -> bool:
+    if z4 is None or z4.empty:
+        return False
+    m = ((z4["created_at"] <= t) & (t < z4["end"]) & (z4["direction"] == direction)
+         & (z4["bottom"] <= top) & (z4["top"] >= bottom))
+    return bool(m.any())
+
+
+def h4_candidates(symbol: str, m5: pd.DataFrame, bar_time: pd.Timestamp, spread_floor: bool | None = None) -> pd.DataFrame:
+    """Untapped + alive H4 zones (swing 5, 60 trading days) -> ML cards for models/h4_brain.txt (zone_tf "H4").
+    Same pipeline as research h4_merge_test.build (zones_for on H4 + simulate_touches touch 1)."""
+    if "close_time" not in m5:
+        m5 = m5.assign(close_time=m5.index + pd.Timedelta(minutes=5), m5_count=1)
+    if spread_floor is None:
+        spread_floor = config.ML_SPREAD_FLOOR
+    m5_ml = sfloor.apply(m5, symbol) if spread_floor else m5
+    fr = frames(m5_ml, bar_time)
+    h1, h4, d1 = fr["H1"], fr["H4"], fr["D1"]
+    h1_zones = track_zones(find_orderflow_zones(h1, swing_n=config.SWING_N, min_disp_atr=1.5), h1)
+    bias_h4, bias_d1 = structure_breaks(h4, 2), structure_breaks(d1, 2)
+    z = find_orderflow_zones(h4, swing_n=H4_SWING, min_disp_atr=config.disp_for(symbol))
+    if z.empty:
+        return pd.DataFrame()
+    z = z[(z["created_at"] >= bar_time - pd.Timedelta(days=H4_LIFE_DAYS * 7 / 5 + 10)) & (z["created_at"] <= bar_time)]
+    if z.empty:
+        return pd.DataFrame()
+    z = track_zones(z.reset_index(drop=True), h4)
+    z = add_features(z, h4, h1, h4, h1_zones)
+    z = zone_context(z, h4, h4, d1, bias_h4, bias_d1, h1)
+    z["zone_tf"] = "H4"
+    d = _touch_rows(z, symbol, m5, bar_time, H4_LIFE_DAYS)
+    if d.empty:
+        return d
+    d["h4_zone"] = False
+    d["zone_type"] = "h4"
+    return d

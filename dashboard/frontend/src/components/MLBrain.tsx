@@ -234,6 +234,25 @@ export default function MLBrain({ report, accountReport, training, onTrain, conn
             </div>
           )}
 
+          {report.h4 && (
+            <div className="mb-2 border px-2 py-1.5 text-[10px]" style={{ borderColor: 'rgba(179,136,255,0.5)' }}
+              title="Separate model for H4 zone trades only (src/ml/h4_brain.py). The 15m zone brain and exit brain above are not changed by it.">
+              <div className="mb-0.5 text-[9px] tracking-[2px]" style={{ color: '#b388ff' }}>4H ZONE BRAIN</div>
+              <div className="text-muted">
+                H4 BOS swing {report.h4.h4_swing} · zone lives {report.h4.h4_life_days} trading days · ML needs {report.h4.threshold != null ? Math.round(report.h4.threshold * 100) : '—'}% · exit 1:1
+                {report.h4.trained_at ? ` · trained ${report.h4.trained_at.slice(0, 10)}` : ''}
+              </div>
+              {report.h4.parts?.filter((p) => p.zone_type !== 'normal').map((p) => (
+                <div key={p.zone_type}>
+                  <span style={{ color: p.zone_type === 'h4' ? '#b388ff' : '#ffb000' }}>{p.zone_type === 'h4' ? '4H ZONE' : 'CONFLUENCE'}</span>
+                  <span className="ml-2">{p.trades} trades · WIN {p.win_pct}% · </span>
+                  <b className="font-normal" style={{ color: (p.pf ?? 0) >= 1 ? 'var(--green)' : 'var(--red)' }}>PF {p.pf?.toFixed(2) ?? '—'}</b>
+                  <span className="text-muted"> (2019-21 {p.pf_19_21?.toFixed(2) ?? '—'} · 2022-26 {p.pf_22_26?.toFixed(2) ?? '—'})</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {report.exits?.length > 0 && (
             <>
               <div className="mb-1 text-[9px] tracking-[2px] text-muted" title="Same trades (M15 first touch, ML top 30%), different exits, unseen years">

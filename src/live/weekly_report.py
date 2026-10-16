@@ -116,6 +116,13 @@ def build(live: Path = LIVE, days: int = 7, end: pd.Timestamp | None = None) -> 
     c_w = wk(ct, "exit_time")
     col = lambda d, c: d[c] if c in d else pd.Series(dtype=float)  # noqa: E731
     rep["zone_account"] = _box(col(c_w, "r")) | dict(pnl_usd=round(float(col(c_w, "pnl").sum()), 2))
+
+    def by_type(d):                                   # 16 Oct 2026: normal / confluence / 4H zone trades
+        zt = d["zone_type"].fillna("normal") if "zone_type" in d else pd.Series("normal", index=d.index)
+        return {k: _box(col(d[zt == k], "r")) | dict(pnl_usd=round(float(col(d[zt == k], "pnl").sum()), 2))
+                for k in ("normal", "confluence", "h4")}
+    rep["zone_by_type_week"] = by_type(c_w) if not c_w.empty else {}
+    rep["zone_by_type_all_time"] = by_type(ct) if not ct.empty else {}
     closes = acts[acts.kind == "close"] if "kind" in acts else pd.DataFrame()
     rep["zone_week"] = _decisions(wk(wi, "fill_time"), wk(closes, "at"))
     rep["zone_all_time"] = _decisions(wi, closes)
@@ -130,6 +137,9 @@ def build(live: Path = LIVE, days: int = 7, end: pd.Timestamp | None = None) -> 
         out = {}
         if d.empty or "strategy" not in d:
             return out
+        d = d.copy()
+        if "zone_type" in d:                          # zone bot split: zone_normal / zone_confluence / zone_h4
+            d["strategy"] = np.where(d["strategy"] == "zone", "zone_" + d["zone_type"].fillna("normal").astype(str), d["strategy"])
         for st, g in d.groupby("strategy"):
             out[st] = dict(n=int(len(g)), real_R=round(float(g["real_r"].dropna().sum()), 2),
                            shadow_R=round(float(g["shadow_r"].dropna().sum()), 2), net_usd=round(float(g["net_usd"].dropna().sum()), 2),
@@ -151,6 +161,10 @@ def text(rep: dict) -> str:
     L = [f"WEEKLY REPORT {rep['from_'][:10]} -> {rep['to'][:10]}"]
     za = rep["zone_account"]
     L.append(f"ZONE BOT account: {za['n']} closed trades, R {za['R']:+.2f}, PF {za['pf']}, ${za['pnl_usd']:+,.2f}")
+    for k, nm in (("normal", "NORMAL 15m (0.25%)"), ("confluence", "CONFLUENCE (1%)"), ("h4", "4H ZONE (1%)")):
+        b = (rep.get("zone_by_type_week") or {}).get(k)
+        if b:
+            L.append(f"  {nm:22s} {b['n']:4d} trades  R {b['R']:+7.2f}  PF {b['pf']}  ${b['pnl_usd']:+,.2f}")
     for scope in ("zone_week", "zone_all_time"):
         z = rep.get(scope) or {}
         L.append("This week (touched zones):" if scope == "zone_week" else "Since the start:")

@@ -18,10 +18,10 @@ WHAT-IF LOG (data/live/whatif.csv): jis bhi zone ko price ne chhua, uski ek row 
 (taken / ML low / value area / quiet / news / limits ...) aur 1:1 aur trailing dono se kitna R milta (gross + net).
 Isse demo ke baad pata chalega ki har filter aur exit brain live mein sahi kaam kar rahe hain ya nahi.
 
-Virtual account: $10,000, combo 0.5% / 0.25% (reduce at 3% DD, recover at 1% DD).
-House money 5%, caps 1% / 0.5%; brake 5% (risk aadha), kill switch 10%.
-Daily stop/budget: aggressive 2%/2.5%, conservative 1.5%/2%,
-max 3 trades, 1 per pair, max 2 same USD direction. (src/risk/portfolio_sim.RiskConfig)
+Virtual account: $10,000. 16 Oct 2026 - 3-part zone bot (ZONE_RISK below):
+  NORMAL 15m zone 0.25% | CONFLUENCE (15m zone inside an alive H4 zone) 1% | 4H ZONE trade (h4_brain, 1:1) 1%.
+Fixed risk (no house money / no combo switch), brake 5% DD (risk aadha), kill switch 10%, daily stop 2% / budget 2.5%,
+max 5 trades, max 2 per pair, max 2 same USD direction. (zone_risk_config -> src/risk/portfolio_sim.RiskConfig)
 
 Chalana:
     python src\live\shadow.py                         (MT5 demo, live; Ctrl+C se band)
@@ -44,12 +44,12 @@ sys.path.insert(0, str(ROOT))
 
 from src import config  # noqa: E402
 from src.live import control  # noqa: E402
-from src.live.brain import Brain  # noqa: E402
-from src.live.live_features import HISTORY_DAYS, candidates  # noqa: E402
+from src.live.brain import Brain, H4Brain  # noqa: E402
+from src.live.live_features import HISTORY_DAYS, candidates, h4_candidates  # noqa: E402
 from src.research.management import POLICIES, run_trade_full  # noqa: E402
 from src.backtest import tick_engine as te  # noqa: E402
 from src.risk.portfolio_sim import (LOT, PIP, daily_ok, risk_usd_per_unit,  # noqa: E402
-                                    trade_risk_pct, trading_day, usd_side, RiskMode, combo_config)
+                                    trading_day, usd_side, RiskMode, RiskConfig)
 
 LIVE = ROOT / "data" / "live"
 NY = "America/New_York"
@@ -57,12 +57,45 @@ POL = {p.name: p for p in POLICIES}
 EXIT_POLICY = {"tp1": POL["tp1"], "trail": POL["trail1"]}
 HOLD_BARS = 3 * 288
 STATE_VERSION = 2
+# 16 Oct 2026 - 3-part zone bot (his plan; research: src/research/three_part_sim.py + priority_test.py):
+#   normal     = 15m zone, no H4 confluence           -> 0.25% risk
+#   confluence = 15m zone inside an alive H4 zone      -> 1.00% risk
+#   h4         = H4 zone trade (h4_brain, 1:1 exit)    -> 1.00% risk
+# Fixed risk (no house money), 5% DD -> half, 10% DD kill, max 5 open, max 2 per pair, max 2 same USD side.
+DEC_COLS = ["logged_at", "bar_time", "symbol", "direction", "zone", "entry", "sl", "sl_pips", "score", "va_pos", "act",
+            "exit", "lots", "spread_live", "spread_used", "decision", "reason", "zone_type"]
+ZONE_RISK = {"normal": 0.25, "confluence": 1.0, "h4": 1.0}   # H4 0.75 -> 1.0 on 16 Oct 2026 (his ask, risk_hm_test.py)
+ZONE_TYPE_TEXT = {"normal": "NORMAL", "confluence": "CONFLUENCE", "h4": "4H"}
+
+
+def zone_risk_config(capital: float, commission: float) -> RiskConfig:
+    return RiskConfig(capital=capital, commission_per_lot=commission, risk_pct=ZONE_RISK["normal"],
+                      risk_cap_pct=max(ZONE_RISK.values()), house_money_pct=0.0, brake_dd_pct=5.0, brake_factor=0.5,
+                      kill_dd_pct=10.0, daily_loss_pct=2.0, daily_risk_budget_pct=2.5, max_open=5, max_per_symbol=2,
+                      max_usd_same_side=2, combo_enabled=False)
+
+
+def upgrade_csv(path: Path, cols: list[str], defaults: dict):
+    """Old CSV without the new columns -> rewrite once with them (old rows get the default)."""
+    try:
+        if not path.exists():
+            return
+        head = path.open().readline().strip().split(",")
+        missing = [c for c in defaults if c not in head]
+        if not missing:
+            return
+        d = pd.read_csv(path)
+        for c in missing:
+            d[c] = defaults[c]
+        d.reindex(columns=[c for c in cols if c in d.columns] + [c for c in d.columns if c not in cols]).to_csv(path, index=False)
+    except Exception as e:  # noqa: BLE001
+        print(f"csv upgrade {path.name}: {e}")
 TS_KEYS = ("bar_time", "zone", "fill_time", "exit_time")
 WI_COLS = ["logged_at", "symbol", "direction", "zone", "fill_time", "entry", "sl", "sl_pips", "score", "va_pos", "act",
            "decision", "reason", "exit_brain", "r_tp1", "exit_tp1", "r_trail", "exit_trail", "trail_exit_time", "cost_r",
-           "net_tp1", "net_trail", "net_brain", "user", "exit_bot", "net_bot"]
+           "net_tp1", "net_trail", "net_brain", "user", "exit_bot", "net_bot", "zone_type"]
 CLOSED_COLS = ["symbol", "direction", "zone", "fill_time", "exit_time", "entry", "sl", "sl_pips", "score", "va_pos", "act",
-               "exit", "exit_reason", "r", "lots", "risk_pct", "risk_usd", "braked", "pnl"]
+               "exit", "exit_reason", "r", "lots", "risk_pct", "risk_usd", "braked", "pnl", "zone_type", "zone_tf"]
 
 
 def _category(reason: str | None) -> str:
@@ -133,7 +166,8 @@ def _watch_row(r, o, reason) -> dict:
                 reason=reason or "", zone_candle_time=_unix(r.zone_candle_time), created_at=_unix(r.created_at),
                 top=_num(getattr(r, "top", None)), bottom=_num(getattr(r, "bottom", None)),
                 body_top=_num(getattr(r, "body_top", None)), body_bottom=_num(getattr(r, "body_bottom", None)),
-                disp_atr=_num(getattr(r, "disp_atr", None), 2), has_fvg=bool(getattr(r, "has_fvg", False)))
+                disp_atr=_num(getattr(r, "disp_atr", None), 2), has_fvg=bool(getattr(r, "has_fvg", False)),
+                zone_type=o.get("zone_type", "normal"), zone_tf=o.get("zone_tf", "M15"), thr=o.get("thr"))
 
 
 def _live_levels(t: dict, hi, lo, sp) -> dict:
@@ -180,7 +214,12 @@ class ShadowEngine:
         self.spread_floor = config.ML_SPREAD_FLOOR if spread_floor is None else spread_floor
         self.symbols = symbols or config.CORE_SYMBOLS
         self.brain = Brain()
-        self.cfg = combo_config(capital, config.BROKER_COMMISSION)
+        try:                                # 16 Oct 2026: H4 zone trades (models/h4_brain.txt); missing -> H4 off
+            self.h4brain = H4Brain()
+        except Exception as e:  # noqa: BLE001
+            self.h4brain = None
+            self.log(f"H4 zone trades OFF: {e}")
+        self.cfg = zone_risk_config(capital, config.BROKER_COMMISSION)
         self.risk_mode = RiskMode()
         self.equity = self.peak = capital
         self.day_pnl: dict = {}
@@ -208,6 +247,7 @@ class ShadowEngine:
         self.close_done: set = set()        # close command ids jo ho chuke
         self.out.mkdir(parents=True, exist_ok=True)
         self.dec_file = self.out / "decisions.csv"
+        upgrade_csv(self.dec_file, DEC_COLS, {"zone_type": "normal"})
         if self.dec_file.exists():                   # purani file mein "act" column nahi -> alag rakh do
             head = self.dec_file.open().readline()
             if "spread_used" not in head.strip().split(","):   # purane columns -> alag rakh do
@@ -219,6 +259,8 @@ class ShadowEngine:
                  f"ML spread floor {'ON' if self.spread_floor else 'OFF'}, broker commission ${self.cfg.commission_per_lot}/lot")
         self.closed_file = self.out / "closed_trades.csv"
         self.wi_file = self.out / "whatif.csv"
+        upgrade_csv(self.closed_file, CLOSED_COLS, {"zone_type": "normal", "zone_tf": "M15"})
+        upgrade_csv(self.wi_file, WI_COLS, {"zone_type": "normal"})
         self.feat_file = self.out / "whatif_features.jsonl"   # har chhua zone: ML features + dono exits ka R + tera decision
         if self.wi_file.exists():                   # 15 Oct: what-if mein user / exit_bot columns aaye -> purani file alag
             head = self.wi_file.open().readline().strip().split(",")
@@ -230,10 +272,18 @@ class ShadowEngine:
         self.risk_mode.select(self.cfg, self.equity, self.peak)
         self.apply_control(None)            # tere avoid kiye zones startup se hi yaad
         c_ = self.cfg
-        self.log(f"risk: {c_.risk_pct}% + house money {c_.house_money_pct}% of month profit (max {c_.risk_cap_pct}%), "
-                 f"brake {c_.brake_dd_pct}% DD, kill {c_.kill_dd_pct}% DD, daily stop {c_.daily_loss_pct}%, "
-                 f"daily risk budget {c_.daily_risk_budget_pct}%")
-        self.log("risk combo: 0.5% -> 0.25% at 3% DD; back to 0.5% only at 1% DD")
+        self.log(f"risk: normal {ZONE_RISK['normal']}% / confluence {ZONE_RISK['confluence']}% / H4 {ZONE_RISK['h4']}% "
+                 f"(H4 trades {'ON, threshold %.3f' % self.h4brain.threshold if self.h4brain else 'OFF'}), "
+                 f"brake {c_.brake_dd_pct}% DD (x{c_.brake_factor}), kill {c_.kill_dd_pct}% DD, daily stop {c_.daily_loss_pct}%, "
+                 f"daily risk budget {c_.daily_risk_budget_pct}%, max open {c_.max_open}, max {c_.max_per_symbol} per pair")
+
+    def _risk(self, zone_type: str) -> tuple[float, bool]:
+        """Risk % for a zone type: fixed per type, halved in a 5% drawdown (brake)."""
+        base = ZONE_RISK.get(zone_type, ZONE_RISK["normal"])
+        dd = (self.peak - self.equity) / self.peak * 100 if self.peak > 0 else 0.0
+        if dd >= self.cfg.brake_dd_pct:
+            return base * self.cfg.brake_factor, True
+        return base, False
 
     def _day(self, t):
         d = trading_day(t)
@@ -339,11 +389,8 @@ class ShadowEngine:
         if self.kill:
             self._log_decision(symbol, o, "FILL-SKIPPED", "kill switch active")
             return False
-        if self.cfg.combo_enabled:
-            mkey = o['bar_time'].tz_convert(NY).strftime('%Y-%m')
-            if mkey != self.month:
-                self.month, self.month_start = mkey, self.equity
-            risk_pct, braked = trade_risk_pct(self.cfg, self.equity, self.peak, self.month_start)
+        if True:                                   # lots again at fill (equity may have changed)
+            risk_pct, braked = self._risk(o.get("zone_type", "normal"))
             per_unit = risk_usd_per_unit(symbol, o['entry'], o['risk'])
             lots = float(np.floor((self.equity * risk_pct / 100 / per_unit) / LOT / self.cfg.lot_step) * self.cfg.lot_step)
             o = dict(o, lots=round(lots, 2), risk_usd=round(lots * LOT * per_unit, 2),
@@ -351,7 +398,7 @@ class ShadowEngine:
             if lots < self.cfg.min_lot:
                 self._log_decision(symbol, o, "FILL-SKIPPED", "lot below 0.01")
                 return False
-        if (len(self.open) >= self.cfg.max_open or any(t["symbol"] == symbol for t in self.open)
+        if (len(self.open) >= self.cfg.max_open or sum(t["symbol"] == symbol for t in self.open) >= self.cfg.max_per_symbol
                 or sum(t["usd_side"] == o["usd_side"] for t in self.open) >= self.cfg.max_usd_same_side):
             self._log_decision(symbol, o, "FILL-SKIPPED", "limit reached at fill (another order filled first)")
             return False
@@ -640,6 +687,16 @@ class ShadowEngine:
         if c.empty:
             return
         c = self.brain.score(c)
+        c["thr"] = float(self.brain.threshold)
+        if self.h4brain is not None:              # 16 Oct 2026: H4 zone trades (own brain, 1:1)
+            try:
+                c4 = h4_candidates(symbol, m5, bar_time, spread_floor=self.spread_floor)
+                if not c4.empty:
+                    c4 = self.h4brain.score(c4)
+                    c4["thr"] = float(self.h4brain.threshold)
+                    c = pd.concat([c, c4], ignore_index=True)
+            except Exception as e:  # noqa: BLE001 - H4 problem never stops the 15m bot
+                self.log(f"H4 zones {symbol}: {e.__class__.__name__}: {e}")
         dd = (self.peak - self.equity) / self.peak * 100
         if dd >= self.cfg.kill_dd_pct and not self.kill:
             self.kill = True
@@ -648,14 +705,14 @@ class ShadowEngine:
         mkey = bar_time.tz_convert(NY).strftime("%Y-%m")
         if mkey != self.month:
             self.month, self.month_start = mkey, self.equity
-        risk_pct, braked = trade_risk_pct(self.cfg, self.equity, self.peak, self.month_start)
         wi = []
         for r in c.itertuples(index=False):
+            risk_pct, braked = self._risk(getattr(r, "zone_type", "normal"))
             o = self._order(symbol, r, bar_time, risk_pct, braked)
             reason = self._skip_reason(symbol, r, o, today, bar_time)
             wrow = _watch_row(r, o, reason)
             o["zbox"] = {k: wrow[k] for k in ("top", "bottom", "body_top", "body_bottom", "created_at",
-                                               "zone_candle_time", "disp_atr", "has_fvg")}   # chart pe zone box
+                                               "zone_candle_time", "disp_atr", "has_fvg", "zone_type", "zone_tf")}   # chart pe zone box
             lab = _category(reason)
             if reason is None and o.get("user") == "take":
                 lab = "taken_manual"
@@ -669,7 +726,8 @@ class ShadowEngine:
                 self.armed[symbol].append(o)
                 why = "taken manually (you), " if o.get("user") == "take" else ""
                 ex = f"{o['exit']}" + (f" (yours, brain {o['exit_bot']})" if o.get("user_exit") else "")
-                self._log_decision(symbol, o, "TAKE", f"{why}lots {o['lots']}, risk {o['risk_pct']:.2f}%, {ex}")
+                self._log_decision(symbol, o, "TAKE", f"{why}{ZONE_TYPE_TEXT.get(o['zone_type'], '')} zone, lots {o['lots']}, "
+                                                      f"risk {o['risk_pct']:.2f}%, {ex}")
             else:
                 self._log_decision(symbol, o, "SKIP", reason)
         self.wi_armed[symbol] = wi
@@ -705,14 +763,16 @@ class ShadowEngine:
                     lots=round(lots, 2), risk_usd=round(lots * LOT * per_unit, 2),
                     usd_side=usd_side(symbol, r.direction), braked=braked, risk_pct=round(risk_pct, 3),
                     spread_live=_pips(symbol, getattr(r, "spread_live", None)),
-                    spread_used=_pips(symbol, getattr(r, "spread_used", None)))
+                    spread_used=_pips(symbol, getattr(r, "spread_used", None)),
+                    zone_type=str(getattr(r, "zone_type", "normal")), zone_tf=str(getattr(r, "zone_tf", "M15")),
+                    thr=round(float(getattr(r, "thr", self.brain.threshold)), 3))
 
     def _skip_reason(self, symbol, r, o, today, bar_time):
         taken = control.zone_key(symbol, _unix(o["zone"]), o["direction"]) in self.take
         if taken and not (o["ml_keep"] and o["va_ok"] and o["act_ok"]):
             o["user"] = "take"                     # tera TAKE: ML / value area / quiet ko override (risk rules nahi)
         elif not o["ml_keep"]:
-            return f"ML score {o['score']:.2f} < {self.brain.threshold:.2f}"
+            return f"ML score {o['score']:.2f} < {o.get('thr', self.brain.threshold):.2f}"
         elif not o["va_ok"]:
             return f"price above value area ({o['va_pos']})"
         elif not o["act_ok"]:
@@ -731,7 +791,7 @@ class ShadowEngine:
         busy = self.open                        # backtest jaisa: sirf KHULE trades gine jaate hain
         if len(busy) >= self.cfg.max_open:
             return "max open trades"
-        if any(b["symbol"] == symbol for b in busy):
+        if sum(b["symbol"] == symbol for b in busy) >= self.cfg.max_per_symbol:
             return "already in this pair"
         if sum(b["usd_side"] == o["usd_side"] for b in busy) >= self.cfg.max_usd_same_side:
             return "too much USD one way"
@@ -751,10 +811,12 @@ class ShadowEngine:
                    symbol=symbol, direction=o["direction"], zone=o["zone"], entry=o["entry"], sl=o["sl"],
                    sl_pips=o["sl_pips"], score=o["score"], va_pos=o["va_pos"], act=o["act"], exit=o["exit"], lots=o["lots"],
                    spread_live=o.get("spread_live"), spread_used=o.get("spread_used"),
-                   decision=decision, reason=reason)
-        pd.DataFrame([row]).to_csv(self.dec_file, mode="a", header=not self.dec_file.exists(), index=False)
+                   decision=decision, reason=reason, zone_type=o.get("zone_type", "normal"))
+        pd.DataFrame([row]).reindex(columns=DEC_COLS).to_csv(self.dec_file, mode="a", header=not self.dec_file.exists(),
+                                                             index=False)
         ny = pd.Timestamp(o["bar_time"]).tz_convert(NY).strftime("%m-%d %H:%M")
-        self.log(f"  {ny} NY {symbol} {o['direction']:4s} zone@{o['entry']} ML {o['score']:.2f} -> {decision}: {reason}")
+        self.log(f"  {ny} NY {symbol} {o['direction']:4s} {ZONE_TYPE_TEXT.get(o.get('zone_type'), '')} zone@{o['entry']} "
+                 f"ML {o['score']:.2f} -> {decision}: {reason}")
 
     # ------------------------------------------------------------------
     # WHAT-IF: har chhua hua zone, dono exits ke saath (taken ho ya skip)
@@ -808,7 +870,8 @@ class ShadowEngine:
                        exit_trail=res["trail"][1], trail_exit_time=res["trail"][2], cost_r=round(cost, 4),
                        net_tp1=round(net["tp1"], 3), net_trail=round(net["trail"], 3),
                        net_brain=round(net[w["exit"]], 3), user=w.get("user", ""),
-                       exit_bot=w.get("exit_bot", w["exit"]), net_bot=round(net[w.get("exit_bot", w["exit"])], 3))
+                       exit_bot=w.get("exit_bot", w["exit"]), net_bot=round(net[w.get("exit_bot", w["exit"])], 3),
+                       zone_type=w.get("zone_type", "normal"))
             pd.DataFrame([row]).reindex(columns=WI_COLS).to_csv(self.wi_file, mode="a", header=not self.wi_file.exists(),
                                                                 index=False)
             try:                                   # mahine ki training ke liye: features + result (src/ml/monthly_retrain.py)

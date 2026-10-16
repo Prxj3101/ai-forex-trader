@@ -3,6 +3,7 @@ import { api, type RealAccount, type RealClosed, type RealOpen, type RealStats }
 import { floatPnl, fmtSigned, fmtUsd, useLiveTicks } from '../lib/pnl'
 import ControlButton from './ControlButton'
 import { ExecBar } from './LiveMarketPanel'
+import { ZONE_TYPE_TAG } from '../lib/zonesPrimitive'
 
 /*
   REAL DEMO ACCOUNT (LIVE tab): orders the bot sends to the Exness MT5 DEMO (src/live/execution.py), next to the
@@ -142,6 +143,25 @@ export default function RealAccountPanel({ connected }: { connected: boolean }) 
             <Stat label="OPEN / PENDING" value={`${open.length} / ${pending.length}`} tip="Real positions open now / zone limit orders waiting on MT5" />
           </div>
 
+          {f !== 'orb' && d.stats_zone_type && (
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {(['normal', 'confluence', 'h4'] as const).map((k) => {
+                const z = d.stats_zone_type?.[k]
+                return (
+                  <div key={k} className="border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}
+                    title="Closed real zone bot trades of this zone type (net after commission + swap)">
+                    <div className="mb-0.5 text-[9px] tracking-[2px]" style={{ color: ZONE_TYPE_TAG[k].color }}>ZONE BOT · {ZONE_TYPE_TAG[k].text}</div>
+                    <span>{z?.trades ?? 0} trades</span>
+                    <span className="ml-2 text-muted">WIN {z?.win_pct == null ? '—' : `${z.win_pct}%`}</span>
+                    <span className="ml-2 text-muted">PF {z?.pf_usd == null ? '—' : z.pf_usd.toFixed(2)}</span>
+                    <span className="ml-2" style={{ color: pc(z?.net_usd) }}>{usd(z?.net_usd ?? 0)}</span>
+                    <span className="ml-2" style={{ color: pc(z?.real_r) }}>{sgn(z?.real_r ?? 0, 1)}R</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           <div className="mb-3 grid gap-3 xl:grid-cols-2">
             <div className="min-w-0">
               <div className="mb-1 text-[9px] tracking-[2px] text-muted">P&amp;L CURVE (CLOSED REAL TRADES, NET $)</div>
@@ -172,7 +192,8 @@ export default function RealAccountPanel({ connected }: { connected: boolean }) 
                   const r = l && p.risk ? (l.pips * pip(p.symbol)) / p.risk : p.r_now
                   return (
                     <tr key={p.ticket} className="border-t" style={{ borderColor: 'var(--line)' }}>
-                      <td style={{ color: STRAT_COLOR[p.strategy] }}>{NAME[p.strategy]}{p.taken_manual ? ' (TAKE)' : ''}</td>
+                      <td style={{ color: STRAT_COLOR[p.strategy] }}>{NAME[p.strategy]}{p.taken_manual ? ' (TAKE)' : ''}
+                        {p.strategy === 'zone' && <span className="ml-1" style={{ color: ZONE_TYPE_TAG[p.zone_type ?? 'normal'].color }}>{ZONE_TYPE_TAG[p.zone_type ?? 'normal'].text}</span>}</td>
                       <td>{p.symbol}</td>
                       <td style={{ color: p.buy ? 'var(--green)' : 'var(--red)' }}>{p.buy ? 'BUY' : 'SELL'} {p.lots}</td>
                       <td className="text-muted">{p.opened ? nyIso(p.opened) : nyTime(p.time)}</td>
@@ -243,7 +264,8 @@ export default function RealAccountPanel({ connected }: { connected: boolean }) 
                 <tbody>{closed.map((t, i) => (
                   <tr key={`${t.ticket}${i}`} className="border-t" style={{ borderColor: 'var(--line)' }} title={`${t.note ?? ''}${t.real_open_time ? ` · opened ${nyIso(t.real_open_time)} NY` : ''} · ticket #${t.ticket ?? '?'}`}>
                     <td className="text-muted">{nyIso(t.real_exit_time)}</td>
-                    <td style={{ color: STRAT_COLOR[t.strategy] }}>{NAME[t.strategy] ?? t.strategy}</td>
+                    <td style={{ color: STRAT_COLOR[t.strategy] }}>{NAME[t.strategy] ?? t.strategy}
+                      {t.strategy === 'zone' && <span className="ml-1" style={{ color: ZONE_TYPE_TAG[t.zone_type ?? 'normal'].color }}>{ZONE_TYPE_TAG[t.zone_type ?? 'normal'].text}</span>}</td>
                     <td>{t.symbol}</td>
                     <td style={{ color: t.direction === 'bull' ? 'var(--green)' : 'var(--red)' }}>{t.direction === 'bull' ? 'BUY' : 'SELL'} {t.lots ?? ''}</td>
                     <td className="text-right text-muted">{t.shadow_entry ?? '—'}</td>

@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import type { RiskReport } from '../lib/api'
 import { rgba, useTheme } from '../lib/theme'
 import { fmtTs } from '../lib/time'
+import { ZONE_TYPE_TAG } from '../lib/zonesPrimitive'
 
 /*
   Risk Agent ka account simulation: "agar bot 2019 se is account pe chalta toh kya hota?"
@@ -56,6 +57,49 @@ function Stat({ label, value, color, tip }: { label: string; value: string; colo
   )
 }
 
+function Zone3Strip({ z }: { z: NonNullable<RiskReport['zone3']> }) {
+  const pf = (v: number | null) => (v == null ? '—' : v.toFixed(2))
+  const col = (v: number | null) => (v == null ? 'var(--muted)' : v >= 1 ? 'var(--green)' : 'var(--red)')
+  return (
+    <div className="mb-2">
+      <div className="mb-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+        {z.parts.map((p) => (
+          <div key={p.zone_type} className="border px-2.5 py-1.5 text-[11px]" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}
+            title={p.zone_type === 'normal' ? '15m zones without H4 confluence' : p.zone_type === 'confluence' ? '15m zones that sit inside an alive H4 zone' : 'H4 zone trades (own ML brain, 1:1 exit)'}>
+            <div className="mb-0.5 text-[9px] tracking-[2px]" style={{ color: ZONE_TYPE_TAG[p.zone_type].color }}>
+              {ZONE_TYPE_TAG[p.zone_type].text} · {p.risk_pct}% RISK
+            </div>
+            <span>{p.trades.toLocaleString()} trades</span>
+            <span className="ml-2 text-muted">WIN {p.win_pct ?? '—'}%</span>
+            <span className="ml-2" style={{ color: col(p.pf) }}>PF {pf(p.pf)}</span>
+            <span className="ml-2" style={{ color: p.net_usd >= 0 ? 'var(--green)' : 'var(--red)' }}>{p.net_usd >= 0 ? '+' : '-'}{usd(Math.abs(p.net_usd))}</span>
+            <div className="text-[10px] text-muted">
+              PF 2019-21 <b className="font-normal" style={{ color: col(p.pf_19_21) }}>{pf(p.pf_19_21)}</b> · 2022-26 <b className="font-normal" style={{ color: col(p.pf_22_26) }}>{pf(p.pf_22_26)}</b> · {p.r_sum > 0 ? '+' : ''}{p.r_sum}R
+            </div>
+          </div>
+        ))}
+      </div>
+      <table className="mb-1 w-full text-[10px]">
+        <thead className="text-muted"><tr>
+          <th className="text-left font-normal">SAME TRADES, TWO SETUPS</th><th className="text-right font-normal">TRADES</th><th className="text-right font-normal">WIN</th>
+          <th className="text-right font-normal">PF</th><th className="text-right font-normal">TOTAL</th><th className="text-right font-normal">PER YEAR</th><th className="text-right font-normal">MAX DD</th>
+        </tr></thead>
+        <tbody>
+          {z.compare.map((r) => (
+            <tr key={r.name}>
+              <td>{r.name}</td><td className="text-right">{r.trades.toLocaleString()}</td><td className="text-right">{r.win_pct}%</td>
+              <td className="text-right" style={{ color: col(r.profit_factor) }}>{r.profit_factor.toFixed(2)}</td>
+              <td className="text-right" style={{ color: r.total_return_pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{r.total_return_pct}%</td>
+              <td className="text-right">{r.cagr_pct}%</td><td className="text-right">-{r.max_drawdown_pct}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="text-[9px] text-muted">{z.note} Built {z.built_at.slice(0, 10)}.</div>
+    </div>
+  )
+}
+
 export default function AccountPanel({ report }: { report: RiskReport | null }) {
   if (!report) {
     return (
@@ -75,7 +119,7 @@ export default function AccountPanel({ report }: { report: RiskReport | null }) 
   return (
     <div className="panel">
       <div className="ptitle flex-wrap">
-        <span>ACCOUNT SIMULATION</span>
+        <span>{report.zone3 ? 'ACCOUNT SIMULATION · ZONE BOT 3 PARTS' : 'ACCOUNT SIMULATION'}</span>
         <em title="Real lot sizes, commission, slippage and risk rules, on trades the ML picked for years it never saw">
           RISK AGENT // {report.start} TO {report.end}
         </em>
@@ -124,11 +168,13 @@ export default function AccountPanel({ report }: { report: RiskReport | null }) 
         </div>
       )}
 
+      {report.zone3 && <Zone3Strip z={report.zone3} />}
+
       <div className="mb-2 text-[10px] tracking-wider text-muted">
-        START {usd(c.capital)} · {c.combo_enabled ? `COMBO 0.5% / 0.25% · REDUCE AT ${c.combo_reduce_dd_pct}% DD · RECOVER AT ${c.combo_recover_dd_pct}% DD` : `RISK ${c.risk_pct}% PER TRADE`} · COSTS ${c.commission_per_lot}/LOT + {c.slippage_pips} PIP · MAX {c.max_open} OPEN{c.daily_risk_budget_pct === undefined ? ` · DAILY STOP ${c.daily_loss_pct}%` : ''}
+        START {usd(c.capital)} · {report.zone3 ? `RISK NORMAL ${report.zone3.zone_risk.normal}% · CONFLUENCE ${report.zone3.zone_risk.confluence}% · 4H ${report.zone3.zone_risk.h4}%` : c.combo_enabled ? `COMBO 0.5% / 0.25% · REDUCE AT ${c.combo_reduce_dd_pct}% DD · RECOVER AT ${c.combo_recover_dd_pct}% DD` : `RISK ${c.risk_pct}% PER TRADE`} · COSTS ${c.commission_per_lot}/LOT + {c.slippage_pips} PIP · MAX {c.max_open} OPEN{c.max_per_symbol ? ` / ${c.max_per_symbol} PER PAIR` : ''}{c.daily_risk_budget_pct === undefined ? ` · DAILY STOP ${c.daily_loss_pct}%` : ''}
         {c.brake_dd_pct !== undefined && (
           <span title="Risk is halved while closed-balance drawdown is at or above this threshold">
-            {' '}· BRAKE AT -{c.brake_dd_pct}% (RISK DROPS TO {c.combo_enabled ? '0.125' : +(c.risk_pct * (c.brake_factor ?? 1)).toFixed(3)}%)
+            {' '}· BRAKE AT -{c.brake_dd_pct}% ({report.zone3 ? 'ALL RISKS HALVED' : `RISK DROPS TO ${c.combo_enabled ? '0.125' : +(c.risk_pct * (c.brake_factor ?? 1)).toFixed(3)}%`})
           </span>
         )}
         {report.va_filter?.on && (

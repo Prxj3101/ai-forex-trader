@@ -100,6 +100,10 @@ def live_frame(rows: pd.DataFrame) -> pd.DataFrame:
     for c in ("net_tp1", "net_trail", "net_brain", "net_bot"):
         d[c] = pd.to_numeric(d.get(c), errors="coerce")
     d = d.dropna(subset=["fill_time", "net_tp1", "net_trail"])
+    if "zone_type" in d:                    # 16 Oct 2026: H4 zone trades have their own brain (src/ml/h4_brain.py)
+        d = d[d["zone_type"].fillna("normal") != "h4"]
+    if "zone_tf" in d:
+        d = d[d["zone_tf"].astype(str) != "H4"]
     d["r_trail"], d["r_tp1"] = d["net_trail"], d["net_tp1"]
     d["y"] = (d["r_trail"] > 0).astype(int)
     for c in wf.FEATURES:
