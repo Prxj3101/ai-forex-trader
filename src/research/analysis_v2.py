@@ -42,8 +42,37 @@ def _load(symbol: str, commission: float) -> pd.DataFrame | None:
     else:
         d["score"], d["keep_0.3"], d["exit_ml"] = np.nan, np.nan, None
     d["year"] = d["fill_time"].dt.year
+    d["h4_zone"] = _h4_flag(symbol, d) & (d["zone_tf"] == "M15")
+    d["zone_type"] = np.where(d["h4_zone"], "CONFLUENCE", "NORMAL")
     d["disp_bucket"] = pd.cut(d["disp_h1"], [0, 1, 1.5, 2.5, 100], labels=["<1", "1-1.5", "1.5-2.5", ">2.5"])
     return d
+
+
+_H4_CACHE: dict = {}
+
+
+def _h4_flag(symbol: str, d: pd.DataFrame) -> pd.Series:
+    """16 Oct 2026: CONFLUENCE flag = M15 zone overlaps a same-direction alive H4 BOS zone (swing 5) at the fill,
+    same rule as the live bot (src/live/live_features.h4_zone_list / h4_overlap). Cached per dataset file."""
+    from src.live.live_features import h4_zone_list
+    from src.research.zone_dataset import load
+    f = RESEARCH / f"{symbol}_v2.parquet"
+    key = (symbol, f.stat().st_mtime)
+    if key not in _H4_CACHE:
+        z4 = h4_zone_list(symbol, load(symbol, "H4"))
+        zc = z4["created_at"].to_numpy(dtype="datetime64[ns]")
+        ze = z4["end"].to_numpy(dtype="datetime64[ns]")
+        zb = (z4["direction"] == "bull").to_numpy()
+        zt, zbo = z4["top"].to_numpy(), z4["bottom"].to_numpy()
+        tt = d["fill_time"].to_numpy(dtype="datetime64[ns]")
+        bull = (d["direction"] == "bull").to_numpy()
+        top, bot = d["top"].to_numpy(), d["bottom"].to_numpy()
+        flag = np.array([bool(((zc <= tt[i]) & (tt[i] < ze) & (zb == bull[i]) & (zbo <= top[i]) & (zt >= bot[i])).any())
+                         for i in range(len(d))])
+        _H4_CACHE.clear()
+        _H4_CACHE[key] = pd.Series(flag, index=pd.MultiIndex.from_frame(d[KEYS].astype(str)))
+    s = _H4_CACHE[key]
+    return pd.Series(s.reindex(pd.MultiIndex.from_frame(d[KEYS].astype(str))).fillna(False).to_numpy(), index=d.index)
 
 
 def _r(d: pd.DataFrame, exit_: str) -> pd.Series:
@@ -89,7 +118,7 @@ def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = T
            min_disp_h1: float = 0, sessions: list[str] | None = None, killzones: list[str] | None = None,
            fvg_only: bool = False, confluence_only: bool = False, direction: str = "both",
            commission: float = walkforward.COMMISSION, va_filter: bool = False,
-           act_filter: bool = False) -> dict | None:
+           act_filter: bool = False, zone_type: str = "all") -> dict | None:
     d = _load(symbol, commission)
     if d is None:
         return None
@@ -122,6 +151,8 @@ def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = T
         m &= d["h1_confluence"].astype(bool)
     if direction in ("bull", "bear"):
         m &= d["direction"] == direction
+    if zone_type in ("normal", "confluence"):           # 16 Oct 2026: live bot zone types (H4 zone confluence)
+        m &= d["zone_type"] == zone_type.upper()
     f = d[m]
 
     r_all, r_f = _r(d, exit_), _r(f, exit_)
@@ -132,7 +163,8 @@ def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = T
                      "slippage_pips": walkforward.SLIP_PIPS, "net": True,
                      "period": f"{d['year'].min()}-{d['year'].max()}" if len(d) else "no ML scores for this pair",
                      "ml_period_only": ml_needed, "va_filter": va_filter,
-                     "va_max_pos": config.VA_MAX_POS, "act_filter": act_filter, "act_min": config.ACT_MIN},
+                     "va_max_pos": config.VA_MAX_POS, "act_filter": act_filter, "act_min": config.ACT_MIN,
+                     "zone_type": zone_type},
         "break_even_win_pct": BREAK_EVEN.get(exit_),
         "all": _stats(r_all), "filtered": _stats(r_f),
         "equity_all": _equity(d, r_all), "equity_filtered": _equity(f, r_f),
@@ -141,4 +173,5 @@ def report(symbol: str, tf: str = "M15", exit_: str = "brain", ml_only: bool = T
         "by_disp": _breakdown(f, r_f, "disp_bucket", ["<1", "1-1.5", "1.5-2.5", ">2.5"]),
         "by_year": _breakdown(f, r_f, "year"),
         "by_direction": _breakdown(f, r_f, "direction", ["bull", "bear"]),
+        "by_zone_type": _breakdown(f, r_f, "zone_type", ["NORMAL", "CONFLUENCE"]),
     }

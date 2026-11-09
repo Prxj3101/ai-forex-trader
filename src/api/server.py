@@ -164,7 +164,37 @@ def zones(symbol: str, tf: str = "M15", start: str | None = None, end: str | Non
         return []
     z = track_zones(z, df)
     z = z[(z["created_at"] >= view.index[0] - pd.Timedelta(days=1)) & (z["created_at"] <= view.index[-1])]
+    # 16 Oct 2026: live bot zone types. M15 zone inside an alive H4 zone (same direction) = CONFLUENCE, else NORMAL;
+    # plus the H4 zones themselves (4H ZONE). Same rule as src/live/live_features.h4_zone_list.
+    try:
+        z4 = _h4_zones(symbol)
+        lo_t, hi_t = view.index[0], view.index[-1]
+        if tf == "M15" and len(z) and len(z4):
+            z = z.copy()
+            z["zone_type"] = [
+                "confluence" if ((z4["created_at"] <= r.created_at) & (r.created_at < z4["end"]) & (z4["direction"] == r.direction)
+                                 & (z4["bottom"] <= r.top) & (z4["top"] >= r.bottom)).any() else "normal"
+                for r in z.itertuples(index=False)]
+        h4 = z4[(z4["created_at"] <= hi_t) & (z4["end"] >= lo_t)].copy() if len(z4) else z4
+        if len(h4):
+            h4["invalidated_time"] = h4["invalidated_time"].where(h4["invalidated_time"].notna() & (h4["invalidated_time"] <= h4["end"]),
+                                                                  h4["end"].where(h4["end"] <= hi_t))
+            h4 = h4.drop(columns=["end"]).assign(zone_type="h4")
+            z = pd.concat([z, h4], ignore_index=True)
+    except Exception as e:  # noqa: BLE001 - labels are optional
+        print(f"zones: H4 zone types skipped ({e})")
     return zones_to_json(z)
+
+
+@lru_cache(maxsize=4)
+def _h4_zones_cached(symbol: str, mtime: float) -> pd.DataFrame:
+    from src.live.live_features import h4_zone_list
+    return h4_zone_list(symbol, load(symbol, "H4"))
+
+
+def _h4_zones(symbol: str) -> pd.DataFrame:
+    f = ROOT / "data" / "processed" / f"{symbol}_H4.parquet"
+    return _h4_zones_cached(symbol, f.stat().st_mtime if f.exists() else 0.0)
 
 
 # ----------------------------------------------------------------------
@@ -302,7 +332,7 @@ def research_v2_build(symbol: str = "USDJPY"):
 def research_v2_report(symbol: str = "USDJPY", tf: str = "M15", exit: str = "brain", ml_only: bool = True,
                        first_touch: bool = True, min_disp_h1: float = 0, sessions: str = "", killzones: str = "",
                        fvg_only: bool = False, confluence_only: bool = False, direction: str = "both",
-                       va_filter: bool = False, act_filter: bool = False):
+                       va_filter: bool = False, act_filter: bool = False, zone_type: str = "all"):
     from src.research import analysis_v2
 
     if exit not in analysis_v2.EXITS:
@@ -311,7 +341,7 @@ def research_v2_report(symbol: str = "USDJPY", tf: str = "M15", exit: str = "bra
         symbol, tf, exit_=exit, ml_only=ml_only, first_touch=first_touch, min_disp_h1=min_disp_h1,
         sessions=[s for s in sessions.split(",") if s], killzones=[k for k in killzones.split(",") if k],
         fvg_only=fvg_only, confluence_only=confluence_only, direction=direction, va_filter=va_filter,
-        act_filter=act_filter,
+        act_filter=act_filter, zone_type=zone_type,
     )
     if rep is None:
         raise HTTPException(404, f"No dataset v2 for {symbol}. Build it first.")

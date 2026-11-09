@@ -258,6 +258,7 @@ export type ResearchV2Filters = {
   direction: 'both' | 'bull' | 'bear'
   va_filter: boolean
   act_filter: boolean
+  zone_type?: 'all' | 'normal' | 'confluence'   // 16 Oct 2026: live bot zone types (CONFLUENCE = inside an alive H4 zone)
 }
 
 export type ResearchV2Report = {
@@ -288,6 +289,7 @@ export type ResearchV2Report = {
   by_disp: BreakdownRow[]
   by_year: BreakdownRow[]
   by_direction: BreakdownRow[]
+  by_zone_type?: BreakdownRow[]
 }
 
 export type BotConfig = {
@@ -810,5 +812,6 @@ export const api = {
       direction: f.direction,
       va_filter: String(f.va_filter),
       act_filter: String(f.act_filter),
+      zone_type: f.zone_type ?? 'all',
     }),
 }

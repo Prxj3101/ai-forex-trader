@@ -24,7 +24,7 @@ const EXITS: [ResearchExit, string, string][] = [
 const BOT_FILTERS: ResearchV2Filters = {
   tf: 'M15', exit: 'brain', ml_only: true, first_touch: true, min_disp_h1: 0,
   sessions: [], killzones: [], fvg_only: false, confluence_only: false, direction: 'both', va_filter: true,
-  act_filter: true,
+  act_filter: true, zone_type: 'all',
 }
 const NO_FILTERS: ResearchV2Filters = { ...BOT_FILTERS, ml_only: false, first_touch: false, exit: 'trail', va_filter: false, act_filter: false }
 
@@ -240,6 +240,14 @@ export default function ResearchPanel({ symbols, defaultSymbol, refreshKey, buil
             <button className={`chip ${filters.fvg_only ? 'on' : ''}`} onClick={() => set('fvg_only', !filters.fvg_only)} title="Only zones whose displacement left a fair value gap">FVG ONLY</button>
             <button className={`chip ${filters.confluence_only ? 'on' : ''}`} onClick={() => set('confluence_only', !filters.confluence_only)} title="Only zones that overlap a live H1 orderflow zone in the same direction">H1 CONFLUENCE</button>
           </div>
+          <div className="flex flex-wrap gap-1" title="Live bot zone types: NORMAL = 15m zone (0.25% risk), CONFLUENCE = 15m zone inside an alive H4 zone (1% risk). H4 zone trades are in the ACCOUNT SIMULATION panel.">
+            {(['all', 'normal', 'confluence'] as const).map((z) => (
+              <button key={z} className={`chip ${(filters.zone_type ?? 'all') === z ? 'on' : ''}`} onClick={() => set('zone_type', z)}
+                style={z === 'confluence' ? { color: '#ffb000' } : undefined}>
+                {z === 'all' ? 'ALL ZONES' : z === 'normal' ? 'NORMAL' : 'H4 CONFLUENCE'}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap gap-1">
             {(['both', 'bull', 'bear'] as const).map((d) => (
               <button key={d} className={`chip ${filters.direction === d ? 'on' : ''}`} onClick={() => set('direction', d)}>
@@ -281,6 +289,7 @@ export default function ResearchPanel({ symbols, defaultSymbol, refreshKey, buil
                 <Breakdown title="BY KILLZONE (PF)" rows={report.by_killzone} />
                 <Breakdown title="BY H1 DISPLACEMENT (PF)" rows={report.by_disp} />
                 <Breakdown title="BY DIRECTION (PF)" rows={report.by_direction} />
+                {report.by_zone_type && <Breakdown title="BY ZONE TYPE (PF)" rows={report.by_zone_type} />}
                 <Breakdown title="BY YEAR (PF)" rows={report.by_year} />
               </div>
             </>

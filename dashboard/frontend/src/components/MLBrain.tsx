@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { MLReport, RiskReport } from '../lib/api'
 import { rgba, useTheme } from '../lib/theme'
+import { ZONE_TYPE_TAG } from '../lib/zonesPrimitive'
 
 type Props = { report: MLReport | null; accountReport: RiskReport | null; training: boolean; onTrain: () => void; connected: boolean }
 
@@ -114,7 +115,7 @@ export default function MLBrain({ report, accountReport, training, onTrain, conn
 
   const all = report?.summary.find((s) => s.keep === 1)
   const bot = report?.bot ?? null
-  const combo = accountReport?.config.combo_enabled ? accountReport : null
+  const combo = accountReport?.zone3 || accountReport?.config.combo_enabled ? accountReport : null
   const lastYear = report ? Math.max(...report.by_year.map((y) => y.year)) : 0
   const gauge = combo?.win_pct ?? bot?.win_pct ?? report?.score_buckets[report.score_buckets.length - 1]?.real_win_pct ?? 0
   const netTag = report?.net ? 'NET' : 'GROSS'
@@ -126,7 +127,7 @@ export default function MLBrain({ report, accountReport, training, onTrain, conn
       <div className="ptitle"><span>ML BRAIN</span><em>ZONE SCORING</em></div>
 
       <div className="flex items-center gap-3">
-        <div className="relative h-[110px] w-[110px] flex-none" title={combo ? 'Win rate of executed combo account trades after position limits, news blocks and trading costs' : 'Win rate of strategy-selected trades after costs, on years the model never saw'}>
+        <div className="relative h-[110px] w-[110px] flex-none" title={combo ? 'Win rate of executed account trades after position limits and trading costs' : 'Win rate of strategy-selected trades after costs, on years the model never saw'}>
           <div className="absolute inset-0 rounded-full border border-dashed" style={{ borderColor: rgba(theme, 0.35), animation: `spin ${training ? 3 : 12}s linear infinite` }} />
           <div
             className="absolute inset-[6px] rounded-full"
@@ -143,7 +144,7 @@ export default function MLBrain({ report, accountReport, training, onTrain, conn
             <b className="font-display text-2xl" style={{ color: trained ? '#ffd000' : 'var(--muted)' }}>
               {trained ? `${gauge.toFixed(1)}%` : '--'}
             </b>
-            <small className="text-center text-[8px] leading-3 tracking-wider text-muted">{combo ? 'COMBO WIN' : 'STRATEGY WIN'}<br />RATE ({combo ? 'NET' : netTag})</small>
+            <small className="text-center text-[8px] leading-3 tracking-wider text-muted">{combo ? 'ACCOUNT WIN' : 'STRATEGY WIN'}<br />RATE ({combo ? 'NET' : netTag})</small>
           </div>
         </div>
         <div className="text-[11px] leading-6 text-muted">
@@ -163,18 +164,41 @@ export default function MLBrain({ report, accountReport, training, onTrain, conn
 
       {combo && (
         <div className="mb-3 border px-2 py-2 text-[10px]" style={{ borderColor: 'var(--cyan)', background: 'var(--panel2)' }}>
-          <div className="mb-1 font-display tracking-wider" style={{ color: 'var(--cyan)' }}>COMBO ACCOUNT · NET</div>
+          <div className="mb-1 font-display tracking-wider" style={{ color: 'var(--cyan)' }}>{combo.zone3 ? 'ZONE BOT ACCOUNT (3 PARTS) · NET' : 'COMBO ACCOUNT · NET'}</div>
           <div className="mb-2 leading-4 text-muted">
-            BASE 0.5% / 0.25% · REDUCE AT {combo.config.combo_reduce_dd_pct}% DD · RECOVER AT {combo.config.combo_recover_dd_pct}% DD
+            {combo.zone3
+              ? `NORMAL ${combo.zone3.zone_risk.normal}% · CONFLUENCE ${combo.zone3.zone_risk.confluence}% · 4H ${combo.zone3.zone_risk.h4}% · MAX ${combo.config.max_open} OPEN / ${combo.zone3.max_per_symbol} PER PAIR`
+              : `BASE 0.5% / 0.25% · REDUCE AT ${combo.config.combo_reduce_dd_pct}% DD · RECOVER AT ${combo.config.combo_recover_dd_pct}% DD`}
           </div>
           <div className="grid grid-cols-2 gap-x-2 gap-y-2">
-            <div><small className="block text-muted">ACCOUNT PF</small><b className="font-display text-base" style={{ color: 'var(--green)' }}>{combo.profit_factor == null ? '—' : combo.profit_factor.toFixed(2)}</b></div>
-            <div><small className="block text-muted">CAGR / YEAR</small><b className="font-display text-base" style={{ color: 'var(--green)' }}>{combo.cagr_pct.toFixed(1)}%</b></div>
+            <div><small className="block text-muted">ACCOUNT PF</small><b className="font-display text-base" style={{ color: (combo.profit_factor ?? 0) >= 1 ? 'var(--green)' : 'var(--red)' }}>{combo.profit_factor == null ? '—' : combo.profit_factor.toFixed(2)}</b></div>
+            <div><small className="block text-muted">CAGR / YEAR</small><b className="font-display text-base" style={{ color: combo.cagr_pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{combo.cagr_pct.toFixed(1)}%</b></div>
             <div><small className="block text-muted">MAX CLOSED DD</small><b className="font-display text-base" style={{ color: 'var(--amber)' }}>−{combo.max_drawdown_pct.toFixed(1)}%</b></div>
             <div><small className="block text-muted">ACCOUNT TRADES</small><b className="font-display text-base">{combo.trades.toLocaleString()}</b></div>
           </div>
           <div className="mt-2 text-[9px] text-muted">HISTORICAL SIMULATION · {combo.start} TO {combo.end}</div>
-          <div className="mt-1 text-[9px] leading-4 text-muted">Account results include risk sizing, news blocks and position limits. Strategy stats below measure signals in R.</div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-2 mt-2">
+            <div><small className="block text-muted">ACCOUNT WIN RATE</small><b className="font-display text-base">{combo.win_pct}%</b></div>
+            <div><small className="block text-muted">TOTAL RETURN</small><b className="font-display text-base" style={{ color: combo.total_return_pct >= 0 ? 'var(--green)' : 'var(--red)' }}>{combo.total_return_pct}%</b></div>
+          </div>
+          <div className="mt-1 text-[9px] leading-4 text-muted">
+            {combo.zone3
+              ? 'Account results include risk per zone type, costs and position limits (no news block in this test). Strategy stats below measure the 15m signals in R.'
+              : 'Account results include risk sizing, news blocks and position limits. Strategy stats below measure signals in R.'}
+          </div>
+        </div>
+      )}
+
+      {combo?.zone3 && (
+        <div className="mb-3 grid grid-cols-3 gap-1.5 text-center">
+          {combo.zone3.parts.map((p) => (
+            <div key={p.zone_type} className="border px-1 py-1.5" style={{ borderColor: 'var(--line)', background: 'var(--panel2)' }}
+              title={`${p.trades.toLocaleString()} account trades at ${p.risk_pct}% risk · PF 2019-21 ${p.pf_19_21 ?? '—'} / 2022-26 ${p.pf_22_26 ?? '—'} · net $${p.net_usd.toLocaleString()}`}>
+              <small className="block text-[8px] tracking-wider" style={{ color: ZONE_TYPE_TAG[p.zone_type].color }}>{ZONE_TYPE_TAG[p.zone_type].text}</small>
+              <b className="font-display text-base font-medium" style={{ color: (p.pf ?? 0) >= 1 ? 'var(--green)' : 'var(--red)' }}>PF {p.pf?.toFixed(2) ?? '—'}</b>
+              <small className="block text-[9px] text-muted">WIN {p.win_pct ?? '—'}% · {p.trades.toLocaleString()}</small>
+            </div>
+          ))}
         </div>
       )}
 
@@ -195,14 +219,14 @@ export default function MLBrain({ report, accountReport, training, onTrain, conn
             <div
               className="border px-2 py-1.5"
               style={{ borderColor: 'rgba(0,255,136,0.5)', boxShadow: '0 0 12px rgba(0,255,136,0.15) inset' }}
-              title="What the bot actually does: M15 zone, first touch, ML top 30%, value area filter, exit brain picks 1:1 or trailing. Unseen years only."
+              title="15m zone part of the bot: M15 zone, first touch, ML top 30%, value area filter, activity filter, exit brain picks 1:1 or trailing. Unseen years only. CONFLUENCE / 4H ZONE results are in the 4H ZONE BRAIN box and the ACCOUNT SIMULATION panel."
             >
-              <small className="block text-[9px] tracking-wider text-muted">STRATEGY PF ({netTag})</small>
-              <b className="font-display text-lg font-medium" style={{ color: 'var(--green)' }}>
+              <small className="block text-[9px] tracking-wider text-muted">{combo?.zone3 ? `15M STRATEGY PF (${netTag})` : `STRATEGY PF (${netTag})`}</small>
+              <b className="font-display text-lg font-medium" style={{ color: bot && bot.pf < 1 ? 'var(--red)' : 'var(--green)' }}>
                 {bot ? bot.pf.toFixed(2) : '--'}
               </b>
               <small className="block text-[9px] text-muted">
-                {bot ? `${bot.trades.toLocaleString()} trades · ${bot.losing_years} losing yrs` : 'retrain to update'}
+                {bot ? `${bot.trades.toLocaleString()} trades · WIN ${bot.win_pct}% · ${bot.losing_years} losing yrs` : 'retrain to update'}
               </small>
             </div>
           </div>

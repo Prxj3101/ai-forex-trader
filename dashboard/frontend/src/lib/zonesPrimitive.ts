@@ -182,8 +182,8 @@ export class ZonesPrimitive implements ISeriesPrimitive<Time> {
         color: bull ? '#00ff9c' : '#ff426e',
         label: showLabel ? `${bull ? 'DEMAND' : 'SUPPLY'} ${z.bottom}-${z.top} · ${z.disp_atr}x ATR${z.has_fvg ? ' · FVG' : ''}` : '',
         dead,
-        tag: ZONE_TYPE_TAG[z.zone_type ?? 'normal']?.text ?? '',
-        tagColor: ZONE_TYPE_TAG[z.zone_type ?? 'normal']?.color ?? '#c4d0e0',
+        tag: z.zone_type ? ZONE_TYPE_TAG[z.zone_type]?.text ?? '' : '',     // no type = not a bot zone (e.g. research H1 chart)
+        tagColor: z.zone_type ? ZONE_TYPE_TAG[z.zone_type]?.color ?? '#c4d0e0' : '#c4d0e0',
       })
     }
     this.view.rendererImpl.boxes = boxes

@@ -391,7 +391,7 @@ export default function LivePanel({ connected }: { connected: boolean }) {
         <Stat label="EQUITY" value={usd(a.equity)} color="var(--cyan)" tip={`Started with ${usd(a.capital)} · closed trades only (open trades not counted until they close)`} />
         <Stat label="TOTAL" value={`${fmtUsd(totalUsd)} (${signed(a.total_pct)}%)`} color={pnlColor(a.total_pct)} tip={`Change since the start of the shadow account: ${fmtUsd(totalUsd)} after closed-trade costs`} />
         <Stat label="TODAY" value={usd(a.today_pnl)} color={pnlColor(a.today_pnl)} tip={`Broker day (5 PM to 5 PM New York). Daily stop at -${a.daily_loss_pct}%, daily risk budget ${a.daily_budget_pct}%`} />
-        <Stat label="THIS MONTH" value={usd(a.month_pnl)} color={pnlColor(a.month_pnl)} tip="Profit this month. Feeds the house money risk boost." />
+        <Stat label="THIS MONTH" value={usd(a.month_pnl)} color={pnlColor(a.month_pnl)} tip={a.zone_risk ? 'Profit this month (house money is off: risk per zone type is fixed)' : 'Profit this month. Feeds the house money risk boost.'} />
         <Stat label="DRAWDOWN" value={`${fmtUsd(-drawdownUsd)} (-${a.dd_pct.toFixed(2)}%)`} color={ddColor} tip={`From the peak ${usd(a.peak)}: ${fmtUsd(-drawdownUsd)}. Brake at -${a.brake_dd_pct}%, kill switch at -${a.kill_dd_pct}%`} />
         <Stat label="COMM. TOTAL" value={fmtUsd(-commissionTotal)} color="var(--red)" tip={`Round-trip commission: ${fmtUsd(-closedCommission)} on closed trades + ${fmtUsd(-openCommission)} estimated for open trades`} />
         <Stat
